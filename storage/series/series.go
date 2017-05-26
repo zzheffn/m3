@@ -293,6 +293,22 @@ func (s *dbSeries) ReadEncoded(
 	return results, nil
 }
 
+func (s *dbSeries) ReadMetadata(ctx context.Context) (ReadMetadataResult, error) {
+	var result ReadMetadataResult
+
+	s.RLock()
+	defer s.RUnlock()
+
+	for _, block := range s.blocks.AllBlocks() {
+		lastRead := block.LastReadTime()
+		if lastRead.After(result.LastRead) {
+			result.LastRead = lastRead
+		}
+	}
+
+	return result, nil
+}
+
 func (s *dbSeries) FetchBlocks(ctx context.Context, starts []time.Time) []block.FetchBlockResult {
 	res := make([]block.FetchBlockResult, 0, len(starts))
 
@@ -305,11 +321,12 @@ func (s *dbSeries) FetchBlocks(ctx context.Context, starts []time.Time) []block.
 			if err != nil {
 				r := block.NewFetchBlockResult(start, nil,
 					fmt.Errorf("unable to retrieve block stream for series %s time %v: %v",
-						s.id.String(), start, err), nil)
+						s.id.String(), start, err), nil, b.LastReadTime())
 				res = append(res, r)
 			} else if stream != nil {
 				checksum := b.Checksum()
-				r := block.NewFetchBlockResult(start, []xio.SegmentReader{stream}, nil, &checksum)
+				r := block.NewFetchBlockResult(start, []xio.SegmentReader{stream},
+					nil, &checksum, b.LastReadTime())
 				res = append(res, r)
 			}
 		}

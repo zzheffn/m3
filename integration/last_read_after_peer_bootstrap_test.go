@@ -39,7 +39,7 @@ import (
 )
 
 // This test ensures that only reads against a node causes last read
-// for a block to be updated.  Also ensures that bootstrapping from
+// for a block to be updated. Also ensures that bootstrapping from
 // a peer does not cause the blocks to look like they've been read,
 // there is a clear distinction between FetchBlocks API and a read.
 func TestLastReadAfterPeerBootstrap(t *testing.T) {

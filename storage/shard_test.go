@@ -514,7 +514,9 @@ func TestShardFetchBlocksIDExists(t *testing.T) {
 	series := addMockSeries(ctrl, shard, id, 0)
 	now := time.Now()
 	starts := []time.Time{now}
-	expected := []block.FetchBlockResult{block.NewFetchBlockResult(now, nil, nil, nil)}
+	expected := []block.FetchBlockResult{
+		block.NewFetchBlockResult(now, nil, nil, nil, time.Time{}),
+	}
 	series.EXPECT().FetchBlocks(ctx, starts).Return(expected)
 	res, err := shard.FetchBlocks(ctx, id, starts)
 	require.NoError(t, err)

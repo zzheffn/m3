@@ -109,6 +109,7 @@ type db struct {
 type databaseMetrics struct {
 	write               instrument.MethodMetrics
 	read                instrument.MethodMetrics
+	readMetadata        instrument.MethodMetrics
 	fetchBlocks         instrument.MethodMetrics
 	fetchBlocksMetadata instrument.MethodMetrics
 }
@@ -117,6 +118,7 @@ func newDatabaseMetrics(scope tally.Scope, samplingRate float64) databaseMetrics
 	return databaseMetrics{
 		write:               instrument.NewMethodMetrics(scope, "write", samplingRate),
 		read:                instrument.NewMethodMetrics(scope, "read", samplingRate),
+		readMetadata:        instrument.NewMethodMetrics(scope, "readMetadata", samplingRate),
 		fetchBlocks:         instrument.NewMethodMetrics(scope, "fetchBlocks", samplingRate),
 		fetchBlocksMetadata: instrument.NewMethodMetrics(scope, "fetchBlocksMetadata", samplingRate),
 	}
@@ -294,6 +296,24 @@ func (d *db) ReadEncoded(
 
 	res, err := n.ReadEncoded(ctx, id, start, end)
 	d.metrics.read.ReportSuccessOrError(err, d.nowFn().Sub(callStart))
+	return res, err
+}
+
+func (d *db) ReadMetadata(
+	ctx context.Context,
+	namespace, id ts.ID,
+) (ReadMetadataResult, error) {
+	res := ReadMetadataResult{}
+	callStart := d.nowFn()
+	n, err := d.namespaceFor(namespace)
+
+	if err != nil {
+		d.metrics.readMetadata.ReportError(d.nowFn().Sub(callStart))
+		return res, err
+	}
+
+	res, err = n.ReadMetadata(ctx, id)
+	d.metrics.readMetadata.ReportSuccessOrError(err, d.nowFn().Sub(callStart))
 	return res, err
 }
 

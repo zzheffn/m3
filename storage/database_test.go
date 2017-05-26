@@ -85,6 +85,12 @@ func (d *mockDatabase) ReadEncoded(
 	return nil, nil
 }
 
+func (d *mockDatabase) ReadMetadata(
+	context.Context, ts.ID, ts.ID,
+) (ReadMetadataResult, error) {
+	return ReadMetadataResult{}, nil
+}
+
 func (d *mockDatabase) FetchBlocks(
 	context.Context, ts.ID,
 	uint32, ts.ID, []time.Time,
@@ -224,7 +230,9 @@ func TestDatabaseFetchBlocksNamespaceOwned(t *testing.T) {
 	shardID := uint32(0)
 	now := time.Now()
 	starts := []time.Time{now, now.Add(time.Second), now.Add(-time.Second)}
-	expected := []block.FetchBlockResult{block.NewFetchBlockResult(starts[0], nil, nil, nil)}
+	expected := []block.FetchBlockResult{
+		block.NewFetchBlockResult(starts[0], nil, nil, nil, time.Time{}),
+	}
 	mockNamespace := NewMockdatabaseNamespace(ctrl)
 	mockNamespace.EXPECT().FetchBlocks(ctx, shardID, id, starts).Return(expected, nil)
 	d.namespaces[ns.Hash()] = mockNamespace

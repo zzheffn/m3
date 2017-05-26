@@ -145,6 +145,17 @@ func (_mr *_MockDatabaseSeriesRecorder) ReadEncoded(arg0, arg1, arg2 interface{}
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "ReadEncoded", arg0, arg1, arg2)
 }
 
+func (_m *MockDatabaseSeries) ReadMetadata(_param0 context.Context) (ReadMetadataResult, error) {
+	ret := _m.ctrl.Call(_m, "ReadMetadata", _param0)
+	ret0, _ := ret[0].(ReadMetadataResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (_mr *_MockDatabaseSeriesRecorder) ReadMetadata(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "ReadMetadata", arg0)
+}
+
 func (_m *MockDatabaseSeries) Reset(_param0 ts.ID, _param1 bool, _param2 QueryableBlockRetriever) {
 	_m.ctrl.Call(_m, "Reset", _param0, _param1, _param2)
 }

@@ -65,13 +65,18 @@ type Database interface {
 	// Write value to the database for an ID
 	Write(
 		ctx context.Context,
-		namespace ts.ID,
-		id ts.ID,
+		namespace, id ts.ID,
 		timestamp time.Time,
 		value float64,
 		unit xtime.Unit,
 		annotation []byte,
 	) error
+
+	// ReadMetadata retrieves metadata for an ID
+	ReadMetadata(
+		ctx context.Context,
+		namespace, id ts.ID,
+	) (ReadMetadataResult, error)
 
 	// ReadEncoded retrieves encoded segments for an ID
 	ReadEncoded(
@@ -81,7 +86,7 @@ type Database interface {
 		start, end time.Time,
 	) ([][]xio.SegmentReader, error)
 
-	// FetchBlocks retrieves data blocks for a given id and a list of block start times.
+	// FetchBlocks retrieves data blocks for a given ID and a list of block start times.
 	FetchBlocks(
 		ctx context.Context,
 		namespace ts.ID,
@@ -117,6 +122,12 @@ type Database interface {
 
 	// Truncate truncates data for the given namespace
 	Truncate(namespace ts.ID) (int64, error)
+}
+
+// ReadMetadataResult contains metadata results
+type ReadMetadataResult struct {
+	Exists   bool
+	LastRead time.Time
 }
 
 // database is the internal database interface
@@ -167,14 +178,20 @@ type databaseNamespace interface {
 		annotation []byte,
 	) error
 
-	// ReadEncoded reads data for given id within [start, end)
+	// ReadEncoded reads data for given ID within [start, end)
 	ReadEncoded(
 		ctx context.Context,
 		id ts.ID,
 		start, end time.Time,
 	) ([][]xio.SegmentReader, error)
 
-	// FetchBlocks retrieves data blocks for a given id and a list of block start times.
+	// ReadMetadata retrieves metadata for an ID
+	ReadMetadata(
+		ctx context.Context,
+		id ts.ID,
+	) (ReadMetadataResult, error)
+
+	// FetchBlocks retrieves data blocks for a given ID and a list of block start times.
 	FetchBlocks(
 		ctx context.Context,
 		shardID uint32,
@@ -235,6 +252,7 @@ type databaseShard interface {
 	// Tick performs any updates to ensure series drain their buffers and blocks are flushed, etc
 	Tick(c context.Cancellable, softDeadline time.Duration) tickResult
 
+	// Write writes a data point
 	Write(
 		ctx context.Context,
 		id ts.ID,
@@ -244,13 +262,20 @@ type databaseShard interface {
 		annotation []byte,
 	) error
 
+	// ReadEncoded reads data for given ID within [start, end)
 	ReadEncoded(
 		ctx context.Context,
 		id ts.ID,
 		start, end time.Time,
 	) ([][]xio.SegmentReader, error)
 
-	// FetchBlocks retrieves data blocks for a given id and a list of block start times.
+	// ReadMetadata retrieves metadata for an ID
+	ReadMetadata(
+		ctx context.Context,
+		id ts.ID,
+	) (ReadMetadataResult, error)
+
+	// FetchBlocks retrieves data blocks for a given ID and a list of block start times.
 	FetchBlocks(
 		ctx context.Context,
 		id ts.ID,

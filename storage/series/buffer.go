@@ -357,7 +357,9 @@ func (b *dbBuffer) FetchBlocks(ctx context.Context, starts []time.Time) []block.
 		}
 
 		streams := bucket.streams(ctx)
-		res = append(res, block.NewFetchBlockResult(bucket.start, streams, nil, nil))
+		blockRes := block.NewFetchBlockResult(bucket.start, streams,
+			nil, nil, bucket.lastRead())
+		res = append(res, blockRes)
 	})
 
 	return res

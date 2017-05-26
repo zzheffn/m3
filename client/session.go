@@ -2297,6 +2297,16 @@ func (b *baseBlocksResult) newDatabaseBlock(block *rpc.Block) (block.DatabaseBlo
 		return nil, errSessionBadBlockResultFromPeer
 	}
 
+	if block.LastRead != nil {
+		lastRead, err := convert.ToTime(*block.LastRead, block.LastReadTimeType)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse last read: %v", err)
+		}
+		if !lastRead.IsZero() {
+			result.SetLastReadTime(lastRead)
+		}
+	}
+
 	return result, nil
 }
 

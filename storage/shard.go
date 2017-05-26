@@ -569,6 +569,29 @@ func (s *dbShard) ReadEncoded(
 	return entry.series.ReadEncoded(ctx, start, end)
 }
 
+func (s *dbShard) ReadMetadata(
+	ctx context.Context,
+	id ts.ID,
+) (ReadMetadataResult, error) {
+	s.RLock()
+	entry, _, err := s.lookupEntryWithLock(id)
+	s.RUnlock()
+	if err == errShardEntryNotFound {
+		return ReadMetadataResult{Exists: false}, nil
+	}
+	if err != nil {
+		return ReadMetadataResult{}, err
+	}
+	metadata, err := entry.series.ReadMetadata(ctx)
+	if err != nil {
+		return ReadMetadataResult{}, err
+	}
+	return ReadMetadataResult{
+		Exists:   true,
+		LastRead: metadata.LastRead,
+	}, nil
+}
+
 // lookupEntryWithLock returns the entry for a given id while holding a read lock or a write lock.
 func (s *dbShard) lookupEntryWithLock(id ts.ID) (*dbShardEntry, *list.Element, error) {
 	if s.state != dbShardStateOpen {

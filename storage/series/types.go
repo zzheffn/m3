@@ -58,6 +58,9 @@ type DatabaseSeries interface {
 		start, end time.Time,
 	) ([][]xio.SegmentReader, error)
 
+	// ReadMetadata retrieves metadata
+	ReadMetadata(ctx context.Context) (ReadMetadataResult, error)
+
 	// FetchBlocks returns data blocks given a list of block start times
 	FetchBlocks(ctx context.Context, starts []time.Time) []block.FetchBlockResult
 
@@ -89,6 +92,11 @@ type DatabaseSeries interface {
 		bootstrapped bool,
 		blockRetriever QueryableBlockRetriever,
 	)
+}
+
+// ReadMetadataResult contains metadata results
+type ReadMetadataResult struct {
+	LastRead time.Time
 }
 
 // QueryableBlockRetriever is a block retriever that can tell if a block

@@ -57,28 +57,30 @@ var (
 )
 
 type serviceMetrics struct {
-	fetch               instrument.MethodMetrics
-	write               instrument.MethodMetrics
-	fetchBlocks         instrument.MethodMetrics
-	fetchBlocksMetadata instrument.MethodMetrics
-	repair              instrument.MethodMetrics
-	truncate            instrument.MethodMetrics
-	fetchBatchRaw       instrument.BatchMethodMetrics
-	writeBatchRaw       instrument.BatchMethodMetrics
-	overloadRejected    tally.Counter
+	fetch                 instrument.MethodMetrics
+	write                 instrument.MethodMetrics
+	fetchBlocks           instrument.MethodMetrics
+	fetchBlocksMetadata   instrument.MethodMetrics
+	repair                instrument.MethodMetrics
+	truncate              instrument.MethodMetrics
+	fetchBatchRaw         instrument.BatchMethodMetrics
+	writeBatchRaw         instrument.BatchMethodMetrics
+	fetchMetadataBatchRaw instrument.MethodMetrics
+	overloadRejected      tally.Counter
 }
 
 func newServiceMetrics(scope tally.Scope, samplingRate float64) serviceMetrics {
 	return serviceMetrics{
-		fetch:               instrument.NewMethodMetrics(scope, "fetch", samplingRate),
-		write:               instrument.NewMethodMetrics(scope, "write", samplingRate),
-		fetchBlocks:         instrument.NewMethodMetrics(scope, "fetchBlocks", samplingRate),
-		fetchBlocksMetadata: instrument.NewMethodMetrics(scope, "fetchBlocksMetadata", samplingRate),
-		repair:              instrument.NewMethodMetrics(scope, "repair", samplingRate),
-		truncate:            instrument.NewMethodMetrics(scope, "truncate", samplingRate),
-		fetchBatchRaw:       instrument.NewBatchMethodMetrics(scope, "fetchBatchRaw", samplingRate),
-		writeBatchRaw:       instrument.NewBatchMethodMetrics(scope, "writeBatchRaw", samplingRate),
-		overloadRejected:    scope.Counter("overload-rejected"),
+		fetch:                 instrument.NewMethodMetrics(scope, "fetch", samplingRate),
+		write:                 instrument.NewMethodMetrics(scope, "write", samplingRate),
+		fetchBlocks:           instrument.NewMethodMetrics(scope, "fetchBlocks", samplingRate),
+		fetchBlocksMetadata:   instrument.NewMethodMetrics(scope, "fetchBlocksMetadata", samplingRate),
+		repair:                instrument.NewMethodMetrics(scope, "repair", samplingRate),
+		truncate:              instrument.NewMethodMetrics(scope, "truncate", samplingRate),
+		fetchMetadataBatchRaw: instrument.NewMethodMetrics(scope, "fetchMetadataBatchRaw", samplingRate),
+		fetchBatchRaw:         instrument.NewBatchMethodMetrics(scope, "fetchBatchRaw", samplingRate),
+		writeBatchRaw:         instrument.NewBatchMethodMetrics(scope, "writeBatchRaw", samplingRate),
+		overloadRejected:      scope.Counter("overload-rejected"),
 	}
 }
 
@@ -300,6 +302,48 @@ func (s *service) FetchBatchRaw(tctx thrift.Context, req *rpc.FetchBatchRawReque
 	return result, nil
 }
 
+func (s *service) FetchMetadataBatchRaw(tctx thrift.Context, req *rpc.FetchMetadataBatchRawRequest) (*rpc.FetchMetadataBatchRawResult_, error) {
+	callStart := s.nowFn()
+	ctx := tchannelthrift.Context(tctx)
+
+	nsID := s.newID(ctx, req.NameSpace)
+
+	result := rpc.NewFetchMetadataBatchRawResult_()
+
+	for i := range req.Ids {
+		tsID := s.newID(ctx, req.Ids[i])
+		metadata, err := s.db.ReadMetadata(ctx, nsID, tsID)
+		if err != nil {
+			s.metrics.fetchMetadataBatchRaw.ReportError(s.nowFn().Sub(callStart))
+			return nil, convert.ToRPCError(err)
+		}
+
+		rawResult := rpc.NewFetchMetadataRawResult_()
+		result.Elements = append(result.Elements, rawResult)
+
+		rawResult.Exists = metadata.Exists
+
+		setLastRead := false
+		if lastRead := metadata.LastRead; !lastRead.IsZero() {
+			unit := rpc.TimeType_UNIX_NANOSECONDS
+			value, err := convert.ToValue(lastRead, unit)
+			if err == nil {
+				rawResult.LastRead = &value
+				rawResult.LastReadTimeType = unit
+				setLastRead = true
+			}
+		}
+		if !setLastRead {
+			rawResult.LastRead = nil
+			rawResult.LastReadTimeType = rpc.TimeType(0)
+		}
+	}
+
+	s.metrics.fetchMetadataBatchRaw.ReportSuccess(s.nowFn().Sub(callStart))
+
+	return result, nil
+}
+
 func (s *service) FetchBlocksRaw(tctx thrift.Context, req *rpc.FetchBlocksRawRequest) (*rpc.FetchBlocksRawResult_, error) {
 	if s.db.IsOverloaded() {
 		s.metrics.overloadRejected.Inc(1)
@@ -351,6 +395,20 @@ func (s *service) FetchBlocksRaw(tctx thrift.Context, req *rpc.FetchBlocksRawReq
 				block.Segments, err = convert.ToSegments(fetchedBlock.Readers())
 				if err != nil {
 					block.Err = convert.ToRPCError(err)
+				}
+				setLastRead := false
+				if lastRead := fetchedBlock.LastRead(); !lastRead.IsZero() {
+					unit := rpc.TimeType_UNIX_NANOSECONDS
+					value, err := convert.ToValue(lastRead, unit)
+					if err == nil {
+						block.LastRead = &value
+						block.LastReadTimeType = unit
+						setLastRead = true
+					}
+				}
+				if !setLastRead {
+					block.LastRead = nil
+					block.LastReadTimeType = rpc.TimeType(0)
 				}
 				if block.Segments == nil {
 					// No data for block, skip this block
@@ -447,11 +505,18 @@ func (s *service) FetchBlocksMetadataRaw(tctx thrift.Context, req *rpc.FetchBloc
 				blockMetadata.Checksum = nil
 			}
 
-			if opts.IncludeLastRead {
-				lastRead := fetchedMetadataBlock.LastRead.UnixNano()
-				blockMetadata.LastRead = &lastRead
-				blockMetadata.LastReadTimeType = rpc.TimeType_UNIX_NANOSECONDS
-			} else {
+			setLastRead := false
+			if opts.IncludeLastRead && !fetchedMetadataBlock.LastRead.IsZero() {
+				lastRead := fetchedMetadataBlock.LastRead
+				unit := rpc.TimeType_UNIX_NANOSECONDS
+				value, err := convert.ToValue(lastRead, unit)
+				if err == nil {
+					blockMetadata.LastRead = &value
+					blockMetadata.LastReadTimeType = unit
+					setLastRead = true
+				}
+			}
+			if !setLastRead {
 				blockMetadata.LastRead = nil
 				blockMetadata.LastReadTimeType = rpc.TimeType(0)
 			}

@@ -126,6 +126,17 @@ func (_mr *_MockDatabaseRecorder) Write(arg0, arg1, arg2, arg3, arg4, arg5, arg6
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Write", arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 }
 
+func (_m *MockDatabase) ReadMetadata(ctx context.Context, namespace ts.ID, id ts.ID) (ReadMetadataResult, error) {
+	ret := _m.ctrl.Call(_m, "ReadMetadata", ctx, namespace, id)
+	ret0, _ := ret[0].(ReadMetadataResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (_mr *_MockDatabaseRecorder) ReadMetadata(arg0, arg1, arg2 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "ReadMetadata", arg0, arg1, arg2)
+}
+
 func (_m *MockDatabase) ReadEncoded(ctx context.Context, namespace ts.ID, id ts.ID, start time.Time, end time.Time) ([][]io.SegmentReader, error) {
 	ret := _m.ctrl.Call(_m, "ReadEncoded", ctx, namespace, id, start, end)
 	ret0, _ := ret[0].([][]io.SegmentReader)
@@ -288,6 +299,17 @@ func (_m *Mockdatabase) Write(ctx context.Context, namespace ts.ID, id ts.ID, ti
 
 func (_mr *_MockdatabaseRecorder) Write(arg0, arg1, arg2, arg3, arg4, arg5, arg6 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Write", arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+}
+
+func (_m *Mockdatabase) ReadMetadata(ctx context.Context, namespace ts.ID, id ts.ID) (ReadMetadataResult, error) {
+	ret := _m.ctrl.Call(_m, "ReadMetadata", ctx, namespace, id)
+	ret0, _ := ret[0].(ReadMetadataResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (_mr *_MockdatabaseRecorder) ReadMetadata(arg0, arg1, arg2 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "ReadMetadata", arg0, arg1, arg2)
 }
 
 func (_m *Mockdatabase) ReadEncoded(ctx context.Context, namespace ts.ID, id ts.ID, start time.Time, end time.Time) ([][]io.SegmentReader, error) {
@@ -524,6 +546,17 @@ func (_mr *_MockdatabaseNamespaceRecorder) ReadEncoded(arg0, arg1, arg2, arg3 in
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "ReadEncoded", arg0, arg1, arg2, arg3)
 }
 
+func (_m *MockdatabaseNamespace) ReadMetadata(ctx context.Context, id ts.ID) (ReadMetadataResult, error) {
+	ret := _m.ctrl.Call(_m, "ReadMetadata", ctx, id)
+	ret0, _ := ret[0].(ReadMetadataResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (_mr *_MockdatabaseNamespaceRecorder) ReadMetadata(arg0, arg1 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "ReadMetadata", arg0, arg1)
+}
+
 func (_m *MockdatabaseNamespace) FetchBlocks(ctx context.Context, shardID uint32, id ts.ID, starts []time.Time) ([]block.FetchBlockResult, error) {
 	ret := _m.ctrl.Call(_m, "FetchBlocks", ctx, shardID, id, starts)
 	ret0, _ := ret[0].([]block.FetchBlockResult)
@@ -749,6 +782,17 @@ func (_m *MockdatabaseShard) ReadEncoded(ctx context.Context, id ts.ID, start ti
 
 func (_mr *_MockdatabaseShardRecorder) ReadEncoded(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "ReadEncoded", arg0, arg1, arg2, arg3)
+}
+
+func (_m *MockdatabaseShard) ReadMetadata(ctx context.Context, id ts.ID) (ReadMetadataResult, error) {
+	ret := _m.ctrl.Call(_m, "ReadMetadata", ctx, id)
+	ret0, _ := ret[0].(ReadMetadataResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (_mr *_MockdatabaseShardRecorder) ReadMetadata(arg0, arg1 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "ReadMetadata", arg0, arg1)
 }
 
 func (_m *MockdatabaseShard) FetchBlocks(ctx context.Context, id ts.ID, starts []time.Time) ([]block.FetchBlockResult, error) {

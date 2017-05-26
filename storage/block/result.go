@@ -33,17 +33,31 @@ type fetchBlockResult struct {
 	readers  []xio.SegmentReader
 	err      error
 	checksum *uint32
+	lastRead time.Time
 }
 
 // NewFetchBlockResult creates a new fetch block result
-func NewFetchBlockResult(start time.Time, readers []xio.SegmentReader, err error, checksum *uint32) FetchBlockResult {
-	return fetchBlockResult{start: start, readers: readers, err: err, checksum: checksum}
+func NewFetchBlockResult(
+	start time.Time,
+	readers []xio.SegmentReader,
+	err error,
+	checksum *uint32,
+	lastRead time.Time,
+) FetchBlockResult {
+	return fetchBlockResult{
+		start:    start,
+		readers:  readers,
+		err:      err,
+		checksum: checksum,
+		lastRead: lastRead,
+	}
 }
 
 func (b fetchBlockResult) Start() time.Time             { return b.start }
 func (b fetchBlockResult) Readers() []xio.SegmentReader { return b.readers }
 func (b fetchBlockResult) Err() error                   { return b.err }
 func (b fetchBlockResult) Checksum() *uint32            { return b.checksum }
+func (b fetchBlockResult) LastRead() time.Time          { return b.lastRead }
 
 type fetchBlockResultByTimeAscending []FetchBlockResult
 

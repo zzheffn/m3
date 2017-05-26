@@ -46,6 +46,7 @@ type TChanNode interface {
 	FetchBatchRaw(ctx thrift.Context, req *FetchBatchRawRequest) (*FetchBatchRawResult_, error)
 	FetchBlocksMetadataRaw(ctx thrift.Context, req *FetchBlocksMetadataRawRequest) (*FetchBlocksMetadataRawResult_, error)
 	FetchBlocksRaw(ctx thrift.Context, req *FetchBlocksRawRequest) (*FetchBlocksRawResult_, error)
+	FetchMetadataBatchRaw(ctx thrift.Context, req *FetchMetadataBatchRawRequest) (*FetchMetadataBatchRawResult_, error)
 	GetPersistRateLimit(ctx thrift.Context) (*NodePersistRateLimitResult_, error)
 	GetWriteNewSeriesAsync(ctx thrift.Context) (*NodeWriteNewSeriesAsyncResult_, error)
 	Health(ctx thrift.Context) (*NodeHealthResult_, error)
@@ -363,6 +364,21 @@ func (c *tchanNodeClient) FetchBlocksRaw(ctx thrift.Context, req *FetchBlocksRaw
 	return resp.GetSuccess(), err
 }
 
+func (c *tchanNodeClient) FetchMetadataBatchRaw(ctx thrift.Context, req *FetchMetadataBatchRawRequest) (*FetchMetadataBatchRawResult_, error) {
+	var resp NodeFetchMetadataBatchRawResult
+	args := NodeFetchMetadataBatchRawArgs{
+		Req: req,
+	}
+	success, err := c.client.Call(ctx, c.thriftService, "fetchMetadataBatchRaw", &args, &resp)
+	if err == nil && !success {
+		if e := resp.Err; e != nil {
+			err = e
+		}
+	}
+
+	return resp.GetSuccess(), err
+}
+
 func (c *tchanNodeClient) GetPersistRateLimit(ctx thrift.Context) (*NodePersistRateLimitResult_, error) {
 	var resp NodeGetPersistRateLimitResult
 	args := NodeGetPersistRateLimitArgs{}
@@ -512,6 +528,7 @@ func (s *tchanNodeServer) Methods() []string {
 		"fetchBatchRaw",
 		"fetchBlocksMetadataRaw",
 		"fetchBlocksRaw",
+		"fetchMetadataBatchRaw",
 		"getPersistRateLimit",
 		"getWriteNewSeriesAsync",
 		"health",
@@ -534,6 +551,8 @@ func (s *tchanNodeServer) Handle(ctx thrift.Context, methodName string, protocol
 		return s.handleFetchBlocksMetadataRaw(ctx, protocol)
 	case "fetchBlocksRaw":
 		return s.handleFetchBlocksRaw(ctx, protocol)
+	case "fetchMetadataBatchRaw":
+		return s.handleFetchMetadataBatchRaw(ctx, protocol)
 	case "getPersistRateLimit":
 		return s.handleGetPersistRateLimit(ctx, protocol)
 	case "getWriteNewSeriesAsync":
@@ -652,6 +671,34 @@ func (s *tchanNodeServer) handleFetchBlocksRaw(ctx thrift.Context, protocol athr
 
 	r, err :=
 		s.handler.FetchBlocksRaw(ctx, req.Req)
+
+	if err != nil {
+		switch v := err.(type) {
+		case *Error:
+			if v == nil {
+				return false, nil, fmt.Errorf("Handler for err returned non-nil error type *Error but nil value")
+			}
+			res.Err = v
+		default:
+			return false, nil, err
+		}
+	} else {
+		res.Success = r
+	}
+
+	return err == nil, &res, nil
+}
+
+func (s *tchanNodeServer) handleFetchMetadataBatchRaw(ctx thrift.Context, protocol athrift.TProtocol) (bool, athrift.TStruct, error) {
+	var req NodeFetchMetadataBatchRawArgs
+	var res NodeFetchMetadataBatchRawResult
+
+	if err := req.Read(protocol); err != nil {
+		return false, nil, err
+	}
+
+	r, err :=
+		s.handler.FetchMetadataBatchRaw(ctx, req.Req)
 
 	if err != nil {
 		switch v := err.(type) {

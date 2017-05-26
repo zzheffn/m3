@@ -79,6 +79,10 @@ type FetchBlockResult interface {
 
 	// Checksum returns the checksum of the underlying block.
 	Checksum() *uint32
+
+	// LastRead returns the last read time of the underlying block, will
+	// be zero value if not read.
+	LastRead() time.Time
 }
 
 // FetchBlocksMetadataOptions are options used when fetching blocks metadata.

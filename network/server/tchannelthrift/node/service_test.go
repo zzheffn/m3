@@ -228,6 +228,68 @@ func TestServiceFetchBatchRaw(t *testing.T) {
 	}
 }
 
+func TestServiceFetchMetadataBatchRaw(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockDB := storage.NewMockDatabase(ctrl)
+	mockDB.EXPECT().Options().Return(testServiceOpts).AnyTimes()
+
+	service := NewService(mockDB, nil).(*service)
+
+	tctx, _ := tchannelthrift.NewContext(time.Minute)
+	ctx := tchannelthrift.Context(tctx)
+	defer ctx.Close()
+
+	nsID := "metrics"
+
+	now := time.Now()
+
+	series := map[string]struct {
+		exists   bool
+		lastRead time.Time
+	}{
+		"foo": {true, now.Add(-time.Minute)},
+		"bar": {true, time.Time{}},
+		"baz": {false, time.Time{}},
+	}
+	for id, s := range series {
+		mockDB.EXPECT().
+			ReadMetadata(ctx, ts.NewIDMatcher(nsID), ts.NewIDMatcher(id)).
+			Return(storage.ReadMetadataResult{
+				Exists:   s.exists,
+				LastRead: s.lastRead,
+			}, nil)
+	}
+
+	ids := [][]byte{[]byte("foo"), []byte("bar"), []byte("baz")}
+	r, err := service.FetchMetadataBatchRaw(tctx, &rpc.FetchMetadataBatchRawRequest{
+		NameSpace: []byte(nsID),
+		Ids:       ids,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, len(ids), len(r.Elements))
+	for i, id := range ids {
+		elem := r.Elements[i]
+		require.NotNil(t, elem)
+
+		expected, ok := series[string(id)]
+		require.True(t, ok)
+
+		assert.Equal(t, expected.exists, elem.Exists)
+
+		if !expected.lastRead.IsZero() {
+			require.NotNil(t, elem.LastRead)
+			assert.Equal(t, expected.lastRead.UnixNano(), *elem.LastRead)
+			assert.Equal(t, rpc.TimeType_UNIX_NANOSECONDS, elem.LastReadTimeType)
+		} else {
+			require.Nil(t, elem.LastRead)
+			assert.Equal(t, rpc.TimeType(0), elem.LastReadTimeType)
+		}
+	}
+}
+
 func TestServiceFetchBlocksRaw(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -242,30 +304,42 @@ func TestServiceFetchBlocksRaw(t *testing.T) {
 	ctx := tchannelthrift.Context(tctx)
 	defer ctx.Close()
 
-	start := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
+	now := time.Now()
+
+	start := now.Add(-2 * time.Hour).Truncate(time.Second)
 	starts := []time.Time{start}
 
 	nsID := "metrics"
 
 	streams := map[string]xio.SegmentReader{}
 	checksums := map[string]uint32{}
-	series := map[string][]struct {
+	type value struct {
 		t time.Time
 		v float64
+	}
+	series := map[string]struct {
+		values   []value
+		lastRead time.Time
 	}{
 		"foo": {
-			{start.Add(10 * time.Second), 1.0},
-			{start.Add(20 * time.Second), 2.0},
+			values: []value{
+				value{start.Add(10 * time.Second), 1.0},
+				value{start.Add(20 * time.Second), 2.0},
+			},
+			lastRead: now.Add(-time.Minute),
 		},
 		"bar": {
-			{start.Add(20 * time.Second), 3.0},
-			{start.Add(30 * time.Second), 4.0},
+			values: []value{
+				value{start.Add(20 * time.Second), 3.0},
+				value{start.Add(30 * time.Second), 4.0},
+			},
+			lastRead: time.Time{},
 		},
 	}
 	for id, s := range series {
 		enc := testServiceOpts.EncoderPool().Get()
 		enc.Reset(start, 0)
-		for _, v := range s {
+		for _, v := range s.values {
 			dp := ts.Datapoint{
 				Timestamp: v.t,
 				Value:     v.v,
@@ -281,11 +355,13 @@ func TestServiceFetchBlocksRaw(t *testing.T) {
 		checksum := digest.SegmentChecksum(seg)
 		checksums[id] = checksum
 
+		result := block.NewFetchBlockResult(start,
+			[]xio.SegmentReader{enc.Stream()}, nil,
+			&checksum, s.lastRead)
+
 		mockDB.EXPECT().
 			FetchBlocks(ctx, ts.NewIDMatcher(nsID), uint32(0), ts.NewIDMatcher(id), starts).
-			Return([]block.FetchBlockResult{
-				block.NewFetchBlockResult(start, []xio.SegmentReader{enc.Stream()}, nil, &checksum),
-			}, nil)
+			Return([]block.FetchBlockResult{result}, nil)
 	}
 
 	ids := [][]byte{[]byte("foo"), []byte("bar")}
@@ -314,6 +390,16 @@ func TestServiceFetchBlocksRaw(t *testing.T) {
 		require.Equal(t, 1, len(elem.Blocks))
 		require.Nil(t, elem.Blocks[0].Err)
 		require.Equal(t, checksums[string(id)], uint32(*(elem.Blocks[0].Checksum)))
+
+		expected := series[string(id)]
+		if !expected.lastRead.IsZero() {
+			require.NotNil(t, elem.Blocks[0].LastRead)
+			assert.Equal(t, expected.lastRead.UnixNano(), *elem.Blocks[0].LastRead)
+			assert.Equal(t, rpc.TimeType_UNIX_NANOSECONDS, elem.Blocks[0].LastReadTimeType)
+		} else {
+			require.Nil(t, elem.Blocks[0].LastRead)
+			assert.Equal(t, rpc.TimeType(0), elem.Blocks[0].LastReadTimeType)
+		}
 
 		seg := elem.Blocks[0].Segments
 		require.NotNil(t, seg)
@@ -434,8 +520,17 @@ func TestServiceFetchBlocksMetadataRaw(t *testing.T) {
 			block := elem.Blocks[i]
 			assert.Equal(t, expectBlock.start.UnixNano(), block.Start)
 			require.NotNil(t, block.Size)
+			assert.Equal(t, expectBlock.size, *block.Size)
 			require.NotNil(t, block.Checksum)
-			require.NotNil(t, block.LastRead)
+			assert.Equal(t, expectBlock.checksum, uint32(*block.Checksum))
+			if !expectBlock.lastRead.IsZero() {
+				require.NotNil(t, block.LastRead)
+				assert.Equal(t, expectBlock.lastRead.UnixNano(), *block.LastRead)
+				assert.Equal(t, rpc.TimeType_UNIX_NANOSECONDS, block.LastReadTimeType)
+			} else {
+				require.Nil(t, block.LastRead)
+				assert.Equal(t, rpc.TimeType(0), block.LastReadTimeType)
+			}
 		}
 	}
 }

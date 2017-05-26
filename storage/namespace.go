@@ -344,6 +344,17 @@ func (n *dbNamespace) ReadEncoded(
 	return shard.ReadEncoded(ctx, id, start, end)
 }
 
+func (n *dbNamespace) ReadMetadata(
+	ctx context.Context,
+	id ts.ID,
+) (ReadMetadataResult, error) {
+	shard, err := n.readableShardFor(id)
+	if err != nil {
+		return ReadMetadataResult{}, err
+	}
+	return shard.ReadMetadata(ctx, id)
+}
+
 func (n *dbNamespace) FetchBlocks(
 	ctx context.Context,
 	shardID uint32,
