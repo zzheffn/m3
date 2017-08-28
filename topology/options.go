@@ -137,7 +137,7 @@ func (o *dynamicOptions) Validate() error {
 	if o.ConfigServiceClient() == nil {
 		return errNoConfigServiceClient
 	}
-	_, err := o.ConfigServiceClient().Services()
+	_, err := o.ConfigServiceClient().Services(nil)
 	if err != nil {
 		return fmt.Errorf("no service discover client, %v", err)
 	}

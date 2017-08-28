@@ -1,5 +1,5 @@
-hash: f36f6957b8e8407334cef4f3ade2c69716c2b742c7d64391ee37618a0c8f8b93
-updated: 2017-08-07T13:39:47.228126307-04:00
+hash: 28399ece6e1d25acbcabc26d70979ce35dca30288f917da4e85eada830e9d2a0
+updated: 2017-08-28T17:14:51.493516264-04:00
 imports:
 - name: github.com/apache/thrift
   version: 53dd39833a08ce33582e5ff31fa18bb4735d6731
@@ -14,13 +14,15 @@ imports:
   subpackages:
   - auth/authpb
   - clientv3
+  - clientv3/concurrency
+  - embed
   - etcdserver/api/v3rpc/rpctypes
   - etcdserver/etcdserverpb
   - integration
   - mvcc/mvccpb
   - pkg/tlsutil
 - name: github.com/davecgh/go-spew
-  version: adab96458c51a58dc1783b3335dcce5461522e75
+  version: 346938d642f2ec3594ed81d874461961cd0faa76
   subpackages:
   - spew
 - name: github.com/facebookgo/clock
@@ -57,7 +59,7 @@ imports:
   - gen
   - prop
 - name: github.com/m3db/m3cluster
-  version: 2eb541bb4b0883e27c78f7594f0eda09f8bf9665
+  version: 889412585a9edc8becf3a78e79f1761573a99625
   subpackages:
   - client
   - client/etcd
@@ -66,12 +68,17 @@ imports:
   - generated/proto/placement
   - kv
   - kv/etcd
+  - kv/util/runtime
   - proto/util
   - services
   - services/client
   - services/heartbeat/etcd
+  - services/leader
+  - services/leader/campaign
+  - services/leader/election
   - services/placement
   - services/placement/algo
+  - services/placement/selector
   - services/placement/service
   - shard
 - name: github.com/m3db/m3em
@@ -129,7 +136,7 @@ imports:
   subpackages:
   - go
 - name: github.com/prometheus/common
-  version: 195bde7883f7c39ea62b0d92ab7359b5327065cb
+  version: 9e0844febd9e2856f839c9cb974fbd676d1755a8
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg
@@ -163,7 +170,7 @@ imports:
 - name: github.com/uber-go/atomic
   version: e682c1008ac17bf26d2e4b5ad6cdd08520ed0b22
 - name: github.com/uber-go/tally
-  version: 4b9d9de43ffcb0b7efe67dab2a92c2d58dbf16ab
+  version: 2605c407d7d219644d03a3680ad7df4779017782
   subpackages:
   - m3
   - m3/customtransports
