@@ -289,6 +289,7 @@ func assertCommitLogWritesByIterating(t *testing.T, l *commitLog, writes []testW
 	defer iter.Close()
 
 	for _, write := range writes {
+		fmt.Println(write)
 		assert.True(t, iter.Next())
 		series, datapoint, unit, annotation := iter.Current()
 		write.assert(t, series, datapoint, unit, annotation)

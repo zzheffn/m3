@@ -49,67 +49,8 @@ var (
 	errCommitLogReaderMissingLogMetadata        = errors.New("commit log reader encountered message missing metadata")
 	errCommitLogReaderIsNotReusable             = errors.New("commit log reader is not reusable")
 	errCommitLogReaderMultipleReadloops         = errors.New("commitlog reader tried to open multiple readLoops, do not call Read() concurrently")
+	errIgnore                                   = errors.New("IGNORE")
 )
-
-// type waitGroupWithTimeout struct {
-// 	sync.Mutex
-// 	waiters   []chan bool
-// 	doneCh    chan struct{}
-// 	timeoutCh <-chan time.Time
-// 	completed bool
-// 	timedout  bool
-// }
-
-// func (w *waitGroupWithTimeout) Wait() (timedout bool) {
-// 	w.Lock()
-
-// 	if w.completed {
-// 		w.Unlock()
-// 		return w.timedout
-// 	}
-
-// 	// If this is the first call to Wait(), setup the state
-// 	if len(w.waiters) == 0 {
-// 		// Timer starts after first call to Wait()
-// 		w.timeoutCh = time.After(5 * time.Second)
-// 		w.doneCh = make(chan struct{})
-
-// 		go func() {
-// 			select {
-// 			case <-w.doneCh:
-// 				w.timedout = false
-// 				for _, waiterCh := range w.waiters {
-// 					waiterCh <- false
-// 				}
-// 			case <-w.timeoutCh:
-// 				w.timedout = true
-// 				for _, waiterCh := range w.waiters {
-// 					waiterCh <- true
-// 				}
-// 			}
-// 		}()
-// 	}
-
-// 	waitCh := make(chan bool)
-// 	w.waiters = append(w.waiters, waitCh)
-// 	w.Unlock()
-// 	timedout = <-waitCh
-// 	return timedout
-// }
-
-// func (w *waitGroupWithTimeout) Done() {
-// 	w.Lock()
-// 	defer w.Unlock()
-
-// 	w.completed = true
-// 	// No one ever called Wait()
-// 	if len(w.waiters) == 0 {
-// 		w.timedout = false
-// 		return
-// 	}
-
-// 	w.doneCh <- struct{}{}
-// }
 
 type commitLogReader interface {
 	// Open opens the commit log for reading
@@ -131,14 +72,16 @@ type readResponse struct {
 }
 
 type decoderArg struct {
-	bytes checked.Bytes
-	err   error
+	bytes      checked.Bytes
+	err        error
+	wasMissing bool
 }
 
 type readerMetadata struct {
 	sync.RWMutex
 	lookup map[uint64]Series
-	wgs    map[uint64]*waitGroupWithTimeout
+	// wgs             map[uint64]*waitGroupWithTimeout
+	missingMetadata map[uint64][]decoderArg
 }
 
 // Used to guard against background workers being started more than once
@@ -163,6 +106,7 @@ type reader struct {
 	nextIndex             int
 	hasBeenOpened         bool
 	backgroundWorkersInit readerBackgroundWorkersInit
+	decodersWg            *sync.WaitGroup
 }
 
 func newCommitLogReader(opts Options) commitLogReader {
@@ -191,10 +135,11 @@ func newCommitLogReader(opts Options) commitLogReader {
 		cancelFunc:  cancelFunc,
 		shutdownCh:  make(chan error),
 		metadata: readerMetadata{
-			lookup: make(map[uint64]Series),
-			wgs:    make(map[uint64]*waitGroupWithTimeout),
+			lookup:          make(map[uint64]Series),
+			missingMetadata: make(map[uint64][]decoderArg),
 		},
-		nextIndex: 0,
+		nextIndex:  0,
+		decodersWg: &sync.WaitGroup{},
 	}
 	return reader
 }
@@ -249,12 +194,20 @@ func (r *reader) Read() (
 	// 			[1]: [b, d]
 	// If we now read from the outBufs in round-robin order (0, 1, 0, 1) we will
 	// end up with the correct global ordering: a, b, c, d
-	rr, ok := <-r.outBufs[r.nextIndex%r.numConc]
-	if !ok {
-		return Series{}, ts.Datapoint{}, xtime.Unit(0), ts.Annotation(nil), io.EOF
+	for {
+		rr, ok := <-r.outBufs[r.nextIndex%r.numConc]
+		if !ok {
+			return Series{}, ts.Datapoint{}, xtime.Unit(0), ts.Annotation(nil), io.EOF
+		}
+		// Skip over ignore messages which are sent when an entry was missing metadata
+		// and will be tried again at the end.
+		if rr.resultErr == errIgnore {
+			r.nextIndex++
+			continue
+		}
+		r.nextIndex++
+		return rr.series, rr.datapoint, rr.unit, rr.annotation, rr.resultErr
 	}
-	r.nextIndex++
-	return rr.series, rr.datapoint, rr.unit, rr.annotation, rr.resultErr
 }
 
 func (r *reader) startBackgroundWorkers() error {
@@ -271,7 +224,8 @@ func (r *reader) startBackgroundWorkers() error {
 	go r.readLoop()
 	for i, decoderBuf := range r.decoderBufs {
 		localDecoderBuf, outBuf := decoderBuf, r.outBufs[i]
-		go r.decoderLoop(localDecoderBuf, outBuf)
+		r.decodersWg.Add(1)
+		go r.decoderLoop(localDecoderBuf, outBuf, false)
 	}
 
 	return nil
@@ -279,15 +233,61 @@ func (r *reader) startBackgroundWorkers() error {
 
 func (r *reader) readLoop() {
 	index := 0
-	defer r.shutdown()
+	// defer r.shutdown()
 	for {
 		// Return's after calls to r.shutdown() are important otherwise we'll try
 		// and close the same channel twice and panic
 		select {
 		case <-r.cancelCtx.Done():
+			r.shutdown()
 			return
 		default:
 			data, err := r.readChunk()
+			if err == io.EOF {
+				// Wait for decoder workers to finish everything in their buffers
+				for _, decoderBuf := range r.decoderBufs {
+					close(decoderBuf)
+				}
+				r.decodersWg.Wait()
+
+				// Instantiate new workers to handle the entries that were missing
+				// metadata
+				numConc := r.opts.ReadConcurrency()
+				decoderBufs := make([]chan decoderArg, 0, numConc)
+				for i := 0; i < numConc; i++ {
+					decoderBufs = append(decoderBufs, make(chan decoderArg, decoderInBufChanSize))
+				}
+				for i, decoderBuf := range decoderBufs {
+					localDecoderBuf, outBuf := decoderBuf, r.outBufs[i]
+					r.decodersWg.Add(1)
+					go r.decoderLoop(localDecoderBuf, outBuf, true)
+				}
+
+				// Send all the entries that were missing metadata to the new workers
+				r.metadata.RLock()
+				for _, missingMetadata := range r.metadata.missingMetadata {
+					for _, arg := range missingMetadata {
+						decoderBufs[index%r.numConc] <- arg
+						index++
+					}
+				}
+				r.metadata.RUnlock()
+
+				// Finally allow the EOF to propagate
+				decoderBufs[index%r.numConc] <- decoderArg{
+					bytes: data,
+					err:   err,
+				}
+
+				// Cleanup
+				for _, decoderBuf := range decoderBufs {
+					close(decoderBuf)
+				}
+				index++
+				r.shutdownCh <- r.close()
+				return
+			}
+
 			// Distribute the decoding work in round-robin fashion so that when we
 			// read round-robin, we get the data back in the original order.
 			r.decoderBufs[index%r.numConc] <- decoderArg{
@@ -295,10 +295,6 @@ func (r *reader) readLoop() {
 				err:   err,
 			}
 			index++
-			// Its important that the EOF error is
-			if err == io.EOF {
-				return
-			}
 		}
 	}
 }
@@ -310,7 +306,7 @@ func (r *reader) shutdown() {
 	r.shutdownCh <- r.close()
 }
 
-func (r *reader) decoderLoop(inBuf <-chan decoderArg, outBuf chan<- readResponse) {
+func (r *reader) decoderLoop(inBuf <-chan decoderArg, outBuf chan<- readResponse, isMissingMetadataWorker bool) {
 	decodingOpts := r.opts.FilesystemOptions().DecodingOptions()
 	decoder := msgpack.NewDecoder(decodingOpts)
 	metadataDecoder := msgpack.NewDecoder(decodingOpts)
@@ -333,6 +329,10 @@ func (r *reader) decoderLoop(inBuf <-chan decoderArg, outBuf chan<- readResponse
 		}
 
 		if len(entry.Metadata) != 0 {
+			// Debug
+			if isMissingMetadataWorker {
+				panic("Missing metadata shouldn't have a metadata dentry")
+			}
 			metadataDecoder.Reset(entry.Metadata)
 			decoded, err := metadataDecoder.DecodeLogMetadata()
 			if err != nil {
@@ -364,23 +364,14 @@ func (r *reader) decoderLoop(inBuf <-chan decoderArg, outBuf chan<- readResponse
 					Namespace:   ts.BinaryID(namespace),
 					Shard:       decoded.Shard,
 				}
-				waitGroup, ok := r.metadata.wgs[entry.Index]
-				// One (or more) goroutines are blocked waiting for this metadata
-				if ok {
-					// Because we enver increment the waitgroup past 1, we can release all
-					// waiting goroutines with a single call to .Done()
-					waitGroup.Done()
-				}
 			}
 			r.metadata.Unlock()
 			namespace.DecRef()
 			id.DecRef()
 		}
 
-		var pendingResult *waitGroupWithTimeout
 		var metadata Series
 		var hasMetadata bool
-		var ok bool
 
 		// Try cheap read lock first
 		r.metadata.RLock()
@@ -389,44 +380,30 @@ func (r *reader) decoderLoop(inBuf <-chan decoderArg, outBuf chan<- readResponse
 
 		// The required metadata hasn't been processed yet
 		if !hasMetadata {
+			// Debug
+			if isMissingMetadataWorker {
+				panic("Missing metadata shouldn't still be missing metadata")
+			}
 			r.metadata.Lock()
 			metadata, hasMetadata = r.metadata.lookup[entry.Index]
 			if !hasMetadata {
-				waitGroup, hasWaitGroup := r.metadata.wgs[entry.Index]
+				_, hasMissingMetadata := r.metadata.missingMetadata[entry.Index]
 				// The waitgroup is never incremented past 1, that way a single call to
 				// .Done() can release multiple waiting goroutines
-				if hasWaitGroup {
-					pendingResult = waitGroup
+				if hasMissingMetadata {
+					// TODO: Limit growth
+					arg.wasMissing = true
+					r.metadata.missingMetadata[entry.Index] = append(r.metadata.missingMetadata[entry.Index], arg)
 				} else {
-					pendingResult = &waitGroupWithTimeout{}
-					r.metadata.wgs[entry.Index] = pendingResult
+					r.metadata.missingMetadata[entry.Index] = []decoderArg{arg}
 				}
 			}
 			r.metadata.Unlock()
-		}
-
-		// The required metadata hasn't been processed yet
-		if pendingResult != nil {
-			// Wait with timeout to prevent deadlock for corrupt commitlog
-			// timedout := r.waitWithTimeout(pendingResult, 5*time.Second)
-			// if timedout {
-
-			// }
-			timedOut := pendingResult.Wait()
-			if timedOut {
-				readResponse.resultErr = errCommitLogReaderMissingLogMetadata
-				outBuf <- readResponse
-				continue
-			}
-			r.metadata.RLock()
-			metadata, ok = r.metadata.lookup[entry.Index]
-			r.metadata.RUnlock()
-			// Something went wrong, maybe the reader was closed early
-			if !ok {
-				readResponse.resultErr = errCommitLogReaderMissingLogMetadata
-				outBuf <- readResponse
-				continue
-			}
+			// Send an NOOP over the channel so we don't break the round-robin
+			// channels reads
+			readResponse.resultErr = errIgnore
+			outBuf <- readResponse
+			continue
 		}
 
 		readResponse.series = metadata
@@ -443,22 +420,11 @@ func (r *reader) decoderLoop(inBuf <-chan decoderArg, outBuf chan<- readResponse
 		// byte slice is still referenced by metadata and annotation
 		arg.bytes.DecRef()
 		arg.bytes.Finalize()
+		if arg.wasMissing {
+		}
 		outBuf <- readResponse
 	}
-}
-
-func (r *reader) waitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) (timedout bool) {
-	c := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(c)
-	}()
-	select {
-	case <-c:
-		return false
-	case <-time.After(timeout):
-		return true
-	}
+	r.decodersWg.Done()
 }
 
 func (r *reader) readChunk() (checked.Bytes, error) {
