@@ -365,7 +365,7 @@ func (ts *testSetup) startServer() error {
 	}
 	log.WithFields(fields...).Infof("starting server")
 
-	resultCh := make(chan error, 1)
+	resultCh := make(chan error, 4)
 
 	httpClusterAddr := *httpClusterAddr
 	if addr := ts.opts.HTTPClusterAddr(); addr != "" {

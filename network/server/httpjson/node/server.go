@@ -21,6 +21,7 @@
 package node
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 
@@ -82,10 +83,13 @@ func (s *server) ListenAndServe() (ns.Close, error) {
 	}
 
 	go func() {
+		fmt.Printf("!!!! starting listen for address: %s\n", s.address)
 		server.Serve(listener)
+		fmt.Printf("!!!! stopping listen for address: %s\n", s.address)
 	}()
 
 	return func() {
+		fmt.Printf("!!!! closing listener for addr: %s\n", s.address)
 		listener.Close()
 	}, nil
 }

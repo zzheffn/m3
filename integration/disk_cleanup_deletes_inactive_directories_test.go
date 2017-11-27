@@ -23,8 +23,6 @@
 package integration
 
 import (
-	"fmt"
-	"runtime/debug"
 	"testing"
 	"time"
 
@@ -39,6 +37,7 @@ func TestDiskCleansupInactiveDirectories(t *testing.T) {
 		t.SkipNow() // Just skip if we're doing a short run
 	}
 	// Test setup
+	var restartedTestSetup *testSetup
 	testOpts := newTestOptions(t)
 	testSetup, err := newTestSetup(t, testOpts, nil)
 	require.NoError(t, err)
@@ -49,7 +48,10 @@ func TestDiskCleansupInactiveDirectories(t *testing.T) {
 	// Start tte server
 	log := testSetup.storageOpts.InstrumentOptions().Logger()
 	log.Info("disk cleanup directories test")
-	require.NoError(t, testSetup.startServer())
+	startErr := testSetup.startServer()
+	log.Infof("!! start err: %v", startErr)
+
+	require.NoError(t, startErr)
 
 	// Stop the server at the end of the test
 
@@ -82,16 +84,21 @@ func TestDiskCleansupInactiveDirectories(t *testing.T) {
 
 	// Server needs to restart for namespace changes to be absorbed
 	go func() {
-		nsResetErr <- waitUntilNamespacesHaveReset(testSetup, namespaces, shardSet)
+		var waitErr error
+		log.Infof("call waitUntilNamespacesHaveReset")
+		restartedTestSetup, waitErr = waitUntilNamespacesHaveReset(testSetup, namespaces, shardSet)
+		log.Infof("done waitUntilNamespacesHaveReset, err: %v", waitErr)
+		nsResetErr <- waitErr
 	}()
 	nsToDelete := testNamespaces[1]
 	log.Info("blocking until namespaces have reset and deleted")
-	go func() {
-		time.Sleep(10 * time.Second)
-		debug.PrintStack()
-	}()
-	fmt.Println("attempting to delete", nsToDelete)
-	require.NoError(t, <-nsResetErr)
+	resetErr := <-nsResetErr
+	log.Infof("attempted to delete %v, err: %v", nsToDelete, resetErr)
+	require.NoError(t, resetErr)
+
+	// defer func() {
+	// 	restartedTestSetup.stopServer()
+	// }()
 
 	go func() {
 		nsCleanupErr <- waitUntilNamespacesCleanedUp(filePathPrefix, nsToDelete, nsWaitTimeout)

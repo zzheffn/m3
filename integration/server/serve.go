@@ -116,47 +116,53 @@ func OpenAndServe(
 	doneCh chan struct{},
 ) error {
 	log := opts.InstrumentOptions().Logger()
-	if err := db.Open(); err != nil {
-		return fmt.Errorf("could not open database: %v", err)
-	}
+	err := func() error {
+		if err := db.Open(); err != nil {
+			return fmt.Errorf("could not open database: %v", err)
+		}
 
-	contextPool := opts.ContextPool()
-	ttopts := tchannelthrift.NewOptions()
-	nativeNodeClose, err := ttnode.NewServer(db, tchannelNodeAddr, contextPool, nil, ttopts).ListenAndServe()
+		contextPool := opts.ContextPool()
+		ttopts := tchannelthrift.NewOptions()
+		nativeNodeClose, err := ttnode.NewServer(db, tchannelNodeAddr, contextPool, nil, ttopts).ListenAndServe()
+		if err != nil {
+			return fmt.Errorf("could not open tchannelthrift interface %s: %v", tchannelNodeAddr, err)
+		}
+		defer nativeNodeClose()
+		log.Infof("node tchannelthrift: listening on %v", tchannelNodeAddr)
+
+		httpjsonNodeClose, err := hjnode.NewServer(db, httpNodeAddr, contextPool, nil, ttopts).ListenAndServe()
+		if err != nil {
+			return fmt.Errorf("could not open httpjson interface %s: %v", httpNodeAddr, err)
+		}
+		defer httpjsonNodeClose()
+		log.Infof("node httpjson: listening on %v", httpNodeAddr)
+
+		nativeClusterClose, err := ttcluster.NewServer(client, tchannelClusterAddr, contextPool, nil).ListenAndServe()
+		if err != nil {
+			return fmt.Errorf("could not open tchannelthrift interface %s: %v", tchannelClusterAddr, err)
+		}
+		defer nativeClusterClose()
+		log.Infof("cluster tchannelthrift: listening on %v", tchannelClusterAddr)
+
+		httpjsonClusterClose, err := hjcluster.NewServer(client, httpClusterAddr, contextPool, nil).ListenAndServe()
+		if err != nil {
+			return fmt.Errorf("could not open httpjson interface %s: %v", httpClusterAddr, err)
+		}
+		defer httpjsonClusterClose()
+		log.Infof("cluster httpjson: listening on %v", httpClusterAddr)
+
+		if err := db.Bootstrap(); err != nil {
+			return fmt.Errorf("bootstrapping database encountered error: %v", err)
+		}
+		log.Info("bootstrapped")
+
+		<-doneCh
+		log.Info("server closing")
+
+		return db.Terminate()
+	}()
 	if err != nil {
-		return fmt.Errorf("could not open tchannelthrift interface %s: %v", tchannelNodeAddr, err)
+		log.Errorf("!! err from OpenAndServe: %v", err)
 	}
-	defer nativeNodeClose()
-	log.Infof("node tchannelthrift: listening on %v", tchannelNodeAddr)
-
-	httpjsonNodeClose, err := hjnode.NewServer(db, httpNodeAddr, contextPool, nil, ttopts).ListenAndServe()
-	if err != nil {
-		return fmt.Errorf("could not open httpjson interface %s: %v", httpNodeAddr, err)
-	}
-	defer httpjsonNodeClose()
-	log.Infof("node httpjson: listening on %v", httpNodeAddr)
-
-	nativeClusterClose, err := ttcluster.NewServer(client, tchannelClusterAddr, contextPool, nil).ListenAndServe()
-	if err != nil {
-		return fmt.Errorf("could not open tchannelthrift interface %s: %v", tchannelClusterAddr, err)
-	}
-	defer nativeClusterClose()
-	log.Infof("cluster tchannelthrift: listening on %v", tchannelClusterAddr)
-
-	httpjsonClusterClose, err := hjcluster.NewServer(client, httpClusterAddr, contextPool, nil).ListenAndServe()
-	if err != nil {
-		return fmt.Errorf("could not open httpjson interface %s: %v", httpClusterAddr, err)
-	}
-	defer httpjsonClusterClose()
-	log.Infof("cluster httpjson: listening on %v", httpClusterAddr)
-
-	if err := db.Bootstrap(); err != nil {
-		return fmt.Errorf("bootstrapping database encountered error: %v", err)
-	}
-	log.Debug("bootstrapped")
-
-	<-doneCh
-	log.Debug("server closing")
-
-	return db.Terminate()
+	return err
 }
