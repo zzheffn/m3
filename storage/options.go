@@ -31,6 +31,7 @@ import (
 	"github.com/m3db/m3db/encoding"
 	"github.com/m3db/m3db/encoding/m3tsz"
 	"github.com/m3db/m3db/persist"
+	"github.com/m3db/m3db/persist/fs"
 	"github.com/m3db/m3db/persist/fs/commitlog"
 	"github.com/m3db/m3db/retention"
 	"github.com/m3db/m3db/runtime"
@@ -83,7 +84,6 @@ var (
 	errNamespaceInitializerNotSet = errors.New("namespace registry initializer not set")
 	errRepairOptionsNotSet        = errors.New("repair enabled but repair options are not set")
 	errTickIntervalNegative       = errors.New("tick interval must be a positive duration")
-	errPersistManagerNotSet       = errors.New("persist manager is not set")
 )
 
 // NewSeriesOptionsFromOptions creates a new set of database series options from provided options.
@@ -159,6 +159,7 @@ func newOptions(poolOpts pool.ObjectPoolOptions) Options {
 		repairEnabled:                  defaultRepairEnabled,
 		repairOpts:                     repair.NewOptions(),
 		bootstrapProcess:               defaultBootstrapProcess,
+		persistManager:                 fs.NewPersistManager(fs.NewOptions()),
 		tickInterval:                   defaultTickInterval,
 		maxFlushRetries:                defaultMaxFlushRetries,
 		poolOpts:                       poolOpts,
@@ -203,13 +204,6 @@ func (o *options) Validate() error {
 		if err := rOpts.Validate(); err != nil {
 			return fmt.Errorf("unable to validate repair options, err: %v", err)
 		}
-	}
-
-	// validate that persist manager is present, if not return
-	// error if error occurred during default creation otherwise
-	// it was set to nil by a caller
-	if o.persistManager == nil {
-		return errPersistManagerNotSet
 	}
 
 	return nil

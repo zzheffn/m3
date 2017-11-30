@@ -42,12 +42,10 @@ type testEntry struct {
 	data []byte
 }
 
-func newTestWriter(t *testing.T, filePathPrefix string) FileSetWriter {
-	writer, err := NewWriter(NewOptions().
-		SetFilePathPrefix(filePathPrefix).
-		SetWriterBufferSize(testWriterBufferSize))
-	require.NoError(t, err)
-	return writer
+func newTestWriter(filePathPrefix string) FileSetWriter {
+	newFileMode := defaultNewFileMode
+	newDirectoryMode := defaultNewDirectoryMode
+	return NewWriter(filePathPrefix, testWriterBufferSize, newFileMode, newDirectoryMode)
 }
 
 func writeTestData(t *testing.T, w FileSetWriter, shard uint32, timestamp time.Time, entries []testEntry) {
@@ -65,18 +63,17 @@ func writeTestData(t *testing.T, w FileSetWriter, shard uint32, timestamp time.T
 
 func readTestData(t *testing.T, r FileSetReader, shard uint32, timestamp time.Time, entries []testEntry) {
 	err := r.Open(testNs1ID, 0, timestamp)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	require.Equal(t, len(entries), r.Entries())
-	require.Equal(t, 0, r.EntriesRead())
+	assert.Equal(t, len(entries), r.Entries())
+	assert.Equal(t, 0, r.EntriesRead())
 
 	for i := 0; i < r.Entries(); i++ {
 		id, data, checksum, err := r.Read()
-		require.NoError(t, err)
-
 		data.IncRef()
 		defer data.DecRef()
 
+		assert.NoError(t, err)
 		assert.Equal(t, entries[i].id, id.String())
 		assert.True(t, bytes.Equal(entries[i].data, data.Get()))
 		assert.Equal(t, digest.Checksum(entries[i].data), checksum)
@@ -100,10 +97,10 @@ func TestSimpleReadWrite(t *testing.T) {
 		{"echo", []byte{7, 8, 9}},
 	}
 
-	w := newTestWriter(t, filePathPrefix)
+	w := newTestWriter(filePathPrefix)
 	writeTestData(t, w, 0, testWriterStart, entries)
 
-	r := newTestReader(t, filePathPrefix)
+	r := newTestReader(filePathPrefix)
 	readTestData(t, r, 0, testWriterStart, entries)
 }
 
@@ -120,7 +117,7 @@ func TestInfoReadWrite(t *testing.T) {
 		{"echo", []byte{7, 8, 9}},
 	}
 
-	w := newTestWriter(t, filePathPrefix)
+	w := newTestWriter(filePathPrefix)
 	writeTestData(t, w, 0, testWriterStart, entries)
 
 	infoFiles := ReadInfoFiles(filePathPrefix, testNs1ID, 0, 16, nil)
@@ -147,12 +144,12 @@ func TestReusingReaderWriter(t *testing.T) {
 		},
 		{},
 	}
-	w := newTestWriter(t, filePathPrefix)
+	w := newTestWriter(filePathPrefix)
 	for i := range allEntries {
 		writeTestData(t, w, 0, testWriterStart.Add(time.Duration(i)*time.Hour), allEntries[i])
 	}
 
-	r := newTestReader(t, filePathPrefix)
+	r := newTestReader(filePathPrefix)
 	for i := range allEntries {
 		readTestData(t, r, 0, testWriterStart.Add(time.Duration(i)*time.Hour), allEntries[i])
 	}
@@ -167,7 +164,7 @@ func TestReusingWriterAfterWriteError(t *testing.T) {
 		{"foo", []byte{1, 2, 3}},
 		{"bar", []byte{4, 5, 6}},
 	}
-	w := newTestWriter(t, filePathPrefix)
+	w := newTestWriter(filePathPrefix)
 	shard := uint32(0)
 	require.NoError(t, w.Open(testNs1ID, testBlockSize, shard, testWriterStart))
 
@@ -184,7 +181,7 @@ func TestReusingWriterAfterWriteError(t *testing.T) {
 		digest.Checksum(entries[1].data)).Error())
 	w.Close()
 
-	r := newTestReader(t, filePathPrefix)
+	r := newTestReader(filePathPrefix)
 	require.Equal(t, errCheckpointFileNotFound, r.Open(testNs1ID, shard, testWriterStart))
 
 	// Now reuse the writer and validate the data are written as expected.
@@ -203,7 +200,7 @@ func TestWriterOnlyWritesNonNilBytes(t *testing.T) {
 		return r
 	}
 
-	w := newTestWriter(t, filePathPrefix)
+	w := newTestWriter(filePathPrefix)
 	err := w.Open(testNs1ID, testBlockSize, 0, testWriterStart)
 	assert.NoError(t, err)
 
@@ -215,7 +212,7 @@ func TestWriterOnlyWritesNonNilBytes(t *testing.T) {
 
 	assert.NoError(t, w.Close())
 
-	r := newTestReader(t, filePathPrefix)
+	r := newTestReader(filePathPrefix)
 	readTestData(t, r, 0, testWriterStart, []testEntry{
 		{"foo", []byte{1, 2, 3, 4, 5, 6}},
 	})

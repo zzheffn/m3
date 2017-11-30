@@ -50,7 +50,7 @@ import (
 
 const (
 	multiAddrPortStart = 9000
-	multiAddrPortEach  = 5
+	multiAddrPortEach  = 4
 )
 
 // TODO: refactor and use m3x/clock ...
@@ -75,8 +75,7 @@ func newMultiAddrTestOptions(opts testOptions, instance int) testOptions {
 		SetTChannelNodeAddr(fmt.Sprintf("%s:%d", bind, start)).
 		SetTChannelClusterAddr(fmt.Sprintf("%s:%d", bind, start+1)).
 		SetHTTPNodeAddr(fmt.Sprintf("%s:%d", bind, start+2)).
-		SetHTTPClusterAddr(fmt.Sprintf("%s:%d", bind, start+3)).
-		SetHTTPDebugAddr(fmt.Sprintf("%s:%d", bind, start+4))
+		SetHTTPClusterAddr(fmt.Sprintf("%s:%d", bind, start+3))
 }
 
 func newMultiAddrAdminClient(

@@ -36,9 +36,6 @@ type Encoder interface {
 	// EncodeIndexEntry encodes index entry
 	EncodeIndexEntry(entry schema.IndexEntry) error
 
-	// EncodeIndexSummary encodes index summary
-	EncodeIndexSummary(entry schema.IndexSummary) error
-
 	// EncodeLogInfo encodes commit log info
 	EncodeLogInfo(info schema.LogInfo) error
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Uber Technologies, Inc
+// Copyright (c) 2017 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -8,7 +8,7 @@
 // furnished to do so, subject to the following conditions:
 //
 // The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software
+// all copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -16,29 +16,37 @@
 // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE
+// THE SOFTWARE.
 
-package encoding
+package commitlog
 
-import "github.com/m3db/m3db/persist/schema"
+import (
+	"testing"
 
-// Decoder decodes persisted data
-type Decoder interface {
-	// Reset resets the data stream to decode from
-	Reset(data []byte)
+	"github.com/stretchr/testify/assert"
+)
 
-	// DecodeIndexInfo decodes the index info
-	DecodeIndexInfo() (schema.IndexInfo, error)
+func TestBitSet(t *testing.T) {
+	set := newBitSet(0)
 
-	// DecodeIndexEntry decodes index entry
-	DecodeIndexEntry() (schema.IndexEntry, error)
+	total := uint(16 * 64)
+	for i := uint(0); i < total; i++ {
+		if i%3 == 0 || i%5 == 0 {
+			set.set(i)
+		}
+	}
 
-	// DecodeLogInfo decodes commit log info
-	DecodeLogInfo() (schema.LogInfo, error)
+	for i := uint(0); i < total; i++ {
+		if i%3 == 0 || i%5 == 0 {
+			assert.True(t, set.test(i))
+		} else {
+			assert.False(t, set.test(i))
+		}
+	}
 
-	// DecodeLogMetadata decodes commit log metadata
-	DecodeLogMetadata() (schema.LogMetadata, error)
+	set.clearAll()
 
-	// DecodeLogEntry decodes commit log entry
-	DecodeLogEntry() (schema.LogEntry, error)
+	for i := uint(0); i < 2*total; i++ {
+		assert.False(t, set.test(i))
+	}
 }

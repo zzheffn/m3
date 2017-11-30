@@ -48,16 +48,19 @@ func newNamespaceDir(storageOpts storage.Options, md namespace.Metadata) string 
 }
 
 // nolint: deadcode
-func newFilesetWriter(storageOpts storage.Options) (fs.FileSetWriter, error) {
+func newFilesetWriter(storageOpts storage.Options) fs.FileSetWriter {
 	fsOpts := storageOpts.CommitLogOptions().FilesystemOptions()
-	return fs.NewWriter(fsOpts)
+	filePathPrefix := fsOpts.FilePathPrefix()
+	writerBufferSize := fsOpts.WriterBufferSize()
+	newFileMode := fsOpts.NewFileMode()
+	newDirectoryMode := fsOpts.NewDirectoryMode()
+	return fs.NewWriter(filePathPrefix, writerBufferSize, newFileMode, newDirectoryMode)
 }
 
 // nolint: deadcode
 func writeFilesetFiles(t *testing.T, storageOpts storage.Options, md namespace.Metadata, shard uint32, fileTimes []time.Time) {
 	rOpts := md.Options().RetentionOptions()
-	writer, err := newFilesetWriter(storageOpts)
-	require.NoError(t, err)
+	writer := newFilesetWriter(storageOpts)
 	for _, start := range fileTimes {
 		require.NoError(t, writer.Open(md.ID(), rOpts.BlockSize(), shard, start))
 		require.NoError(t, writer.Close())

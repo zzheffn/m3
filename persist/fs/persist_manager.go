@@ -95,28 +95,26 @@ func newPersistManagerMetrics(scope tally.Scope) persistManagerMetrics {
 }
 
 // NewPersistManager creates a new filesystem persist manager
-func NewPersistManager(opts Options) (persist.Manager, error) {
+func NewPersistManager(opts Options) persist.Manager {
 	var (
-		filePathPrefix = opts.FilePathPrefix()
-		scope          = opts.InstrumentOptions().MetricsScope().SubScope("persist")
+		filePathPrefix   = opts.FilePathPrefix()
+		writerBufferSize = opts.WriterBufferSize()
+		newFileMode      = opts.NewFileMode()
+		newDirectoryMode = opts.NewDirectoryMode()
+		scope            = opts.InstrumentOptions().MetricsScope().SubScope("persist")
 	)
-	writer, err := NewWriter(opts)
-	if err != nil {
-		return nil, err
-	}
-
 	pm := &persistManager{
 		opts:           opts,
 		filePathPrefix: filePathPrefix,
 		nowFn:          opts.ClockOptions().NowFn(),
 		sleepFn:        time.Sleep,
-		writer:         writer,
+		writer:         NewWriter(filePathPrefix, writerBufferSize, newFileMode, newDirectoryMode),
 		segmentHolder:  make([]checked.Bytes, 2),
 		status:         persistManagerIdle,
 		metrics:        newPersistManagerMetrics(scope),
 	}
 	opts.RuntimeOptionsManager().RegisterListener(pm)
-	return pm, nil
+	return pm
 }
 
 func (pm *persistManager) persist(

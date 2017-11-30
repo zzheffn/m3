@@ -124,8 +124,7 @@ func verifyFlushed(
 	seriesMaps map[xtime.UnixNano]generate.SeriesBlock,
 ) {
 	fsOpts := opts.CommitLogOptions().FilesystemOptions()
-	reader, err := fs.NewReader(opts.BytesPool(), fsOpts)
-	require.NoError(t, err)
+	reader := fs.NewReader(fsOpts.FilePathPrefix(), fsOpts.DataReaderBufferSize(), fsOpts.InfoReaderBufferSize(), opts.BytesPool(), nil)
 	iteratorPool := opts.ReaderIteratorPool()
 	for timestamp, seriesList := range seriesMaps {
 		verifyForTime(t, reader, shardSet, iteratorPool, timestamp.ToTime(), namespace, seriesList)

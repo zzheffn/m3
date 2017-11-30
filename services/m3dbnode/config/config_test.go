@@ -321,7 +321,6 @@ fs:
   throughputCheckEvery: 128
   newFileMode: null
   newDirectoryMode: null
-  mmap: null
 blockRetrieve:
   fetchConcurrency: 0
 tickInterval: 10m0s

@@ -27,7 +27,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/m3db/bitset"
 	"github.com/m3db/m3db/clock"
 	"github.com/m3db/m3db/digest"
 	"github.com/m3db/m3db/persist/encoding"
@@ -91,7 +90,7 @@ type writer struct {
 	chunkReserveHeader []byte
 	buffer             *bufio.Writer
 	sizeBuffer         []byte
-	seen               *bitset.BitSet
+	seen               bitSet
 	logEncoder         encoding.Encoder
 	metadataEncoder    encoding.Encoder
 }
@@ -110,7 +109,7 @@ func newCommitLogWriter(
 		chunkReserveHeader: make([]byte, chunkHeaderLen),
 		buffer:             bufio.NewWriterSize(nil, opts.FlushSize()),
 		sizeBuffer:         make([]byte, binary.MaxVarintLen64),
-		seen:               bitset.NewBitSet(defaultBitSetLength),
+		seen:               newBitSet(defaultBitSetLength),
 		logEncoder:         msgpack.NewEncoder(),
 		metadataEncoder:    msgpack.NewEncoder(),
 	}
@@ -167,7 +166,7 @@ func (w *writer) Write(
 	logEntry.Create = w.nowFn().UnixNano()
 	logEntry.Index = series.UniqueIndex
 
-	seen := w.seen.Test(uint(series.UniqueIndex))
+	seen := w.seen.test(uint(series.UniqueIndex))
 	if !seen {
 		// If "idx" likely hasn't been written to commit log
 		// yet we need to include series metadata
@@ -196,7 +195,7 @@ func (w *writer) Write(
 
 	if !seen {
 		// Record we have written this series and metadata to this commit log
-		w.seen.Set(uint(series.UniqueIndex))
+		w.seen.set(uint(series.UniqueIndex))
 	}
 	return nil
 }
@@ -220,7 +219,7 @@ func (w *writer) Close() error {
 	w.chunkWriter.fd = nil
 	w.start = timeZero
 	w.duration = 0
-	w.seen.ClearAll()
+	w.seen.clearAll()
 	return nil
 }
 

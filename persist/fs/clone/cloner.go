@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/m3db/m3db/persist/encoding/msgpack"
 	"github.com/m3db/m3db/persist/fs"
 	"github.com/m3db/m3db/ts"
 )
@@ -21,24 +22,12 @@ func New(opts Options) FilesetCloner {
 }
 
 func (c *cloner) Clone(src FilesetID, dest FilesetID, destBlocksize time.Duration) error {
-	fsopts := fs.NewOptions().
-		SetDataReaderBufferSize(c.opts.BufferSize()).
-		SetInfoReaderBufferSize(c.opts.BufferSize()).
-		SetWriterBufferSize(c.opts.BufferSize()).
-		SetNewFileMode(c.opts.FileMode()).
-		SetNewDirectoryMode(c.opts.DirMode())
-	reader, err := fs.NewReader(nil, fsopts.SetFilePathPrefix(src.PathPrefix))
-	if err != nil {
-		return fmt.Errorf("unable to create fileset reader: %v", err)
-	}
+	reader := fs.NewReader(src.PathPrefix, c.opts.BufferSize(), c.opts.BufferSize(), nil, msgpack.NewDecodingOptions())
 	if err := reader.Open(ts.StringID(src.Namespace), src.Shard, src.Blockstart); err != nil {
 		return fmt.Errorf("unable to read source fileset: %v", err)
 	}
 
-	writer, err := fs.NewWriter(fsopts.SetFilePathPrefix(dest.PathPrefix))
-	if err != nil {
-		return fmt.Errorf("unable to create fileset writer: %v", err)
-	}
+	writer := fs.NewWriter(dest.PathPrefix, c.opts.BufferSize(), c.opts.FileMode(), c.opts.DirMode())
 	if err := writer.Open(ts.StringID(dest.Namespace), destBlocksize, dest.Shard, dest.Blockstart); err != nil {
 		return fmt.Errorf("unable to open fileset writer: %v", err)
 	}

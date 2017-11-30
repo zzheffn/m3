@@ -18,54 +18,58 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package fs
+package commitlog
 
-import (
-	"fmt"
-	"syscall"
+const (
+	wordSize    = uint(64)
+	logWordSize = uint(6) // lg(wordSize)
+	wordMask    = wordSize - 1
 )
 
-func mmap(fd, offset, length int64, opts mmapOptions) ([]byte, error) {
-	if length == 0 {
-		// Return an empty slice (but not nil so callers who
-		// use nil to mean something special like not initialized
-		// get back an actual ref)
-		return make([]byte, 0), nil
-	}
-
-	var prot int
-	if opts.read {
-		prot = prot | syscall.PROT_READ
-	}
-
-	flags := syscall.MAP_SHARED
-	b, err := syscall.Mmap(int(fd), offset, int(length), prot, flags)
-	if err != nil {
-		return nil, fmt.Errorf("mmap error: %v", err)
-	}
-
-	if !opts.hugePages.enabled ||
-		length < opts.hugePages.threshold {
-		return b, nil
-	}
-
-	// Reduce the number of pagefaults when scanning through large files
-	if err := syscall.Madvise(b, syscall.MADV_HUGEPAGE); err != nil {
-		return nil, fmt.Errorf("madvise error, check platform support: %v", err)
-	}
-
-	return b, nil
+type bitSet interface {
+	test(i uint) bool
+	set(i uint)
+	clearAll()
+	getValues() []uint64
 }
 
-func munmap(b []byte) error {
-	if len(b) == 0 {
-		// Never actually mmapd this, just returned empty slice
-		return nil
-	}
+type bitSetImpl struct {
+	values []uint64
+}
 
-	if err := syscall.Munmap(b); err != nil {
-		return fmt.Errorf("munmap error: %v", err)
-	}
+func newBitSet(size uint) *bitSetImpl {
+	return &bitSetImpl{values: make([]uint64, bitSetIndexOf(size)+1)}
+}
 
-	return nil
+func (b *bitSetImpl) test(i uint) bool {
+	idx := bitSetIndexOf(i)
+	if idx >= len(b.values) {
+		return false
+	}
+	return b.values[idx]&(1<<(i&wordMask)) != 0
+}
+
+func (b *bitSetImpl) set(i uint) {
+	idx := bitSetIndexOf(i)
+	currLen := len(b.values)
+	if idx >= currLen {
+		newValues := make([]uint64, 2*(idx+1))
+		copy(newValues, b.values)
+		b.values = newValues
+	}
+	b.values[idx] |= 1 << (i & wordMask)
+}
+
+func (b *bitSetImpl) clearAll() {
+	for i := range b.values {
+		b.values[i] = 0
+	}
+}
+
+func (b *bitSetImpl) getValues() []uint64 {
+	return b.values
+}
+
+func bitSetIndexOf(i uint) int {
+	return int(i >> logWordSize)
 }

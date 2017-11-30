@@ -112,8 +112,7 @@ type reader struct {
 	bytesPool            pool.CheckedBytesPool
 	chunkReader          *chunkReader
 	dataBuffer           []byte
-	infoDecoder          encoding.Decoder
-	infoDecoderStream    encoding.DecoderStream
+	logDecoder           encoding.Decoder
 	decoderBufs          []chan decoderArg
 	outBufs              []chan readResponse
 	cancelCtx            context.Context
@@ -140,17 +139,16 @@ func newCommitLogReader(opts Options) commitLogReader {
 	}
 
 	reader := &reader{
-		opts:              opts,
-		numConc:           numConc,
-		bytesPool:         opts.BytesPool(),
-		chunkReader:       newChunkReader(opts.FlushSize()),
-		infoDecoder:       msgpack.NewDecoder(decodingOpts),
-		infoDecoderStream: encoding.NewDecoderStream(nil),
-		decoderBufs:       decoderBufs,
-		outBufs:           outBufs,
-		cancelCtx:         cancelCtx,
-		cancelFunc:        cancelFunc,
-		shutdownCh:        make(chan error),
+		opts:        opts,
+		numConc:     numConc,
+		bytesPool:   opts.BytesPool(),
+		chunkReader: newChunkReader(opts.FlushSize()),
+		logDecoder:  msgpack.NewDecoder(decodingOpts),
+		decoderBufs: decoderBufs,
+		outBufs:     outBufs,
+		cancelCtx:   cancelCtx,
+		cancelFunc:  cancelFunc,
+		shutdownCh:  make(chan error),
 		metadata: readerMetadata{
 			lookup:  make(map[uint64]Series),
 			pending: make(map[uint64][]*readerPendingSeriesMetadataResponse),
@@ -270,13 +268,10 @@ func (r *reader) shutdown() {
 }
 
 func (r *reader) decoderLoop(inBuf <-chan decoderArg, outBuf chan<- readResponse) {
-	var (
-		decodingOpts          = r.opts.FilesystemOptions().DecodingOptions()
-		decoder               = msgpack.NewDecoder(decodingOpts)
-		decoderStream         = encoding.NewDecoderStream(nil)
-		metadataDecoder       = msgpack.NewDecoder(decodingOpts)
-		metadataDecoderStream = encoding.NewDecoderStream(nil)
-	)
+	decodingOpts := r.opts.FilesystemOptions().DecodingOptions()
+	decoder := msgpack.NewDecoder(decodingOpts)
+	metadataDecoder := msgpack.NewDecoder(decodingOpts)
+
 	for arg := range inBuf {
 		readResponse := readResponse{}
 		// If there is a pre-existing error, just pipe it through
@@ -288,8 +283,7 @@ func (r *reader) decoderLoop(inBuf <-chan decoderArg, outBuf chan<- readResponse
 
 		// Decode the log entry
 		arg.bytes.IncRef()
-		decoderStream.Reset(arg.bytes.Get())
-		decoder.Reset(decoderStream)
+		decoder.Reset(arg.bytes.Get())
 		entry, err := decoder.DecodeLogEntry()
 		if err != nil {
 			readResponse.resultErr = err
@@ -299,7 +293,7 @@ func (r *reader) decoderLoop(inBuf <-chan decoderArg, outBuf chan<- readResponse
 
 		// If the log entry has associated metadata, decode that as well
 		if len(entry.Metadata) != 0 {
-			err := r.decodeAndHandleMetadata(metadataDecoder, metadataDecoderStream, entry)
+			err := r.decodeAndHandleMetadata(metadataDecoder, entry)
 			if err != nil {
 				readResponse.resultErr = err
 				r.writeToOutBuf(outBuf, readResponse)
@@ -340,13 +334,8 @@ func (r *reader) decoderLoop(inBuf <-chan decoderArg, outBuf chan<- readResponse
 	close(outBuf)
 }
 
-func (r *reader) decodeAndHandleMetadata(
-	metadataDecoder encoding.Decoder,
-	metadataDecoderStream encoding.DecoderStream,
-	entry schema.LogEntry,
-) error {
-	metadataDecoderStream.Reset(entry.Metadata)
-	metadataDecoder.Reset(metadataDecoderStream)
+func (r *reader) decodeAndHandleMetadata(metadataDecoder encoding.Decoder, entry schema.LogEntry) error {
+	metadataDecoder.Reset(entry.Metadata)
 	decoded, err := metadataDecoder.DecodeLogMetadata()
 	if err != nil {
 		return err
@@ -512,9 +501,8 @@ func (r *reader) readInfo() (schema.LogInfo, error) {
 		return emptyLogInfo, err
 	}
 	data.IncRef()
-	r.infoDecoderStream.Reset(data.Get())
-	r.infoDecoder.Reset(r.infoDecoderStream)
-	logInfo, err := r.infoDecoder.DecodeLogInfo()
+	r.logDecoder.Reset(data.Get())
+	logInfo, err := r.logDecoder.DecodeLogInfo()
 	data.DecRef()
 	data.Finalize()
 	return logInfo, err
