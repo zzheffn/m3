@@ -109,7 +109,8 @@ func (bsc BootstrapConfiguration) New(
 				SetResultOptions(rsopts).
 				SetAdminClient(adminClient).
 				SetPersistManager(opts.PersistManager()).
-				SetDatabaseBlockRetrieverManager(blockRetrieverMgr)
+				SetDatabaseBlockRetrieverManager(blockRetrieverMgr).
+				SetFetchBlocksMetadataEndpointVersion(client.FetchBlocksMetadataEndpointV2)
 			bs, err = peers.NewPeersBootstrapper(popts, bs)
 			if err != nil {
 				return nil, err
