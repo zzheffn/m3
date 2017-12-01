@@ -1858,11 +1858,19 @@ func (s *session) streamAndGroupCollectedBlocksMetadata(
 		}
 		// Should never happen
 		if received.submitted {
-			s.log.Warnf(
-				"Received metadata for ID: %s from peer: %s, but peer metadata has already been submitted",
-				m.id,
-				m.peer.Host().String(),
-			)
+			fields := make([]xlog.Field, len(received.results)+1)
+			fields = append(fields, xlog.NewField(
+				"incoming_metadata",
+				fmt.Sprintf("ID: %s, peer: %s", m.id.String(), m.peer.Host().String()),
+			))
+			for i, result := range received.results {
+				fields = append(fields, xlog.NewField(
+					fmt.Sprintf("existing_metadata_%d", i),
+					fmt.Sprintf("ID: %s, peer: %s", result.id.String(), result.peer.Host().String()),
+				))
+			}
+			s.log.WithFields(fields...).Warnf(
+				"Received metadata, but peer metadata has already been submitted")
 			continue
 		}
 		received.results = append(received.results, &m)
@@ -1906,16 +1914,35 @@ func (s *session) streamAndGroupCollectedBlocksMetadataV2(
 			}
 			metadata[key] = received
 		}
+
 		// Should never happen
 		if received.submitted {
-			s.log.Warnf(
-				"Received metadata for ID: %s for block: %s from peer: %s, but peer metadata has already been submitted",
-				m.id,
-				m.blocks[0].start.String(),
-				m.peer.Host().String(),
-			)
+			fields := make([]xlog.Field, len(received.results)+1)
+			fields = append(fields, xlog.NewField(
+				"incoming_metadata",
+				fmt.Sprintf(
+					"ID: %s, peer: %s, block: %s",
+					m.id.String(),
+					m.peer.Host().String(),
+					m.blocks[0].start.String(),
+				),
+			))
+			for i, result := range received.results {
+				fields = append(fields, xlog.NewField(
+					fmt.Sprintf("existing_metadata_%d", i),
+					fmt.Sprintf(
+						"ID: %s, peer: %s, block: %s",
+						result.id.String(),
+						result.peer.Host().String(),
+						result.blocks[0].start.String(),
+					),
+				))
+			}
+			s.log.WithFields(fields...).Warnf(
+				"Received metadata, but peer metadata has already been submitted")
 			continue
 		}
+
 		received.results = append(received.results, &m)
 
 		if len(received.results) == peersLen {
