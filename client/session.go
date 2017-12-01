@@ -77,17 +77,6 @@ const (
 // fetch blocks metadata endpoint
 type FetchBlocksMetadataEndpointVersion int
 
-func (x FetchBlocksMetadataEndpointVersion) String() string {
-	switch x {
-	case FetchBlocksMetadataEndpointV1:
-		return "V1"
-	case FetchBlocksMetadataEndpointV2:
-		return "V2"
-	default:
-		return "unknown"
-	}
-}
-
 const (
 	// FetchBlocksMetadataEndpointV1 represents v1 of the fetch blocks metadata endpoint
 	FetchBlocksMetadataEndpointV1 FetchBlocksMetadataEndpointVersion = iota
@@ -299,7 +288,6 @@ func (s *session) ShardID(id string) (uint32, error) {
 func (s *session) newPeerMetadataStreamingProgressMetrics(
 	shard uint32,
 	resultType resultTypeEnum,
-	endpointVersion FetchBlocksMetadataEndpointVersion,
 ) *streamFromPeersMetrics {
 	mKey := shardMetricsKey{shardID: shard, resultType: resultType}
 	s.metrics.RLock()
@@ -319,9 +307,8 @@ func (s *session) newPeerMetadataStreamingProgressMetrics(
 		return &m
 	}
 	scope = scope.SubScope("stream-from-peers").Tagged(map[string]string{
-		"shard":            fmt.Sprintf("%d", shard),
-		"resultType":       string(resultType),
-		"endpoint-version": endpointVersion.String(),
+		"shard":      fmt.Sprintf("%d", shard),
+		"resultType": string(resultType),
 	})
 	m = streamFromPeersMetrics{
 		fetchBlocksFromPeers:       scope.Gauge("fetch-blocks-inprogress"),
@@ -1262,15 +1249,14 @@ func (s *session) FetchBlocksMetadataFromPeers(
 	}
 
 	var (
-		metadataCh      = make(chan blocksMetadata, blocksMetadataChannelInitialCapacity)
-		errCh           = make(chan error, 1)
-		endpointVersion = FetchBlocksMetadataEndpointV1
-		m               = s.newPeerMetadataStreamingProgressMetrics(shard, resultTypeMetadata, endpointVersion)
+		metadataCh = make(chan blocksMetadata, blocksMetadataChannelInitialCapacity)
+		errCh      = make(chan error, 1)
+		m          = s.newPeerMetadataStreamingProgressMetrics(shard, resultTypeMetadata)
 	)
 
 	go func() {
 		errCh <- s.streamBlocksMetadataFromPeers(
-			namespace, shard, peers, start, end, metadataCh, m, endpointVersion)
+			namespace, shard, peers, start, end, metadataCh, m, FetchBlocksMetadataEndpointV1)
 		close(metadataCh)
 		close(errCh)
 	}()
@@ -1294,7 +1280,7 @@ func (s *session) FetchBootstrapBlocksFromPeers(
 	var (
 		result   = newBulkBlocksResult(s.opts, opts)
 		doneCh   = make(chan struct{})
-		progress = s.newPeerMetadataStreamingProgressMetrics(shard, resultTypeBootstrap, version)
+		progress = s.newPeerMetadataStreamingProgressMetrics(shard, resultTypeBootstrap)
 	)
 
 	// Determine which peers own the specified shard
@@ -1376,7 +1362,7 @@ func (s *session) FetchBlocksFromPeers(
 			default:
 			}
 		}
-		progress = s.newPeerMetadataStreamingProgressMetrics(shard, resultTypeRaw, FetchBlocksMetadataEndpointV1)
+		progress = s.newPeerMetadataStreamingProgressMetrics(shard, resultTypeRaw)
 	)
 
 	peers, err := s.peersForShard(shard)
