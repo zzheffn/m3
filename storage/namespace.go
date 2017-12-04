@@ -418,10 +418,26 @@ func (n *dbNamespace) ReadEncoded(
 	callStart := n.nowFn()
 	shard, err := n.readableShardFor(id)
 	if err != nil {
+		n.log.WithFields(
+			xlog.NewField("nsID", n.ID),
+			xlog.NewField("tsID", id),
+			xlog.NewField("start", start),
+			xlog.NewField("end", end),
+			xlog.NewField("func", "namespace.readableShardFor"),
+		).Error(err.Error())
 		n.metrics.read.ReportError(n.nowFn().Sub(callStart))
 		return nil, err
 	}
 	res, err := shard.ReadEncoded(ctx, id, start, end)
+	if err != nil {
+		n.log.WithFields(
+			xlog.NewField("nsID", n.ID),
+			xlog.NewField("tsID", id),
+			xlog.NewField("start", start),
+			xlog.NewField("end", end),
+			xlog.NewField("func", "shard.ReadEncoded"),
+		).Error(err.Error())
+	}
 	n.metrics.read.ReportSuccessOrError(err, n.nowFn().Sub(callStart))
 	return res, err
 }

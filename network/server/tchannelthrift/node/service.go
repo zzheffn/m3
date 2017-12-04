@@ -42,6 +42,7 @@ import (
 	"github.com/m3db/m3x/checked"
 	xerrors "github.com/m3db/m3x/errors"
 	"github.com/m3db/m3x/instrument"
+	xlog "github.com/m3db/m3x/log"
 	"github.com/m3db/m3x/pool"
 	xtime "github.com/m3db/m3x/time"
 
@@ -102,6 +103,7 @@ type service struct {
 	blocksMetadataPool       tchannelthrift.BlocksMetadataPool
 	blocksMetadataSlicePool  tchannelthrift.BlocksMetadataSlicePool
 	health                   *rpc.NodeHealthResult_
+	logger                   xlog.Logger
 }
 
 // NewService creates a new node TChannel Thrift service
@@ -133,6 +135,7 @@ func NewService(db storage.Database, opts tchannelthrift.Options) rpc.TChanNode 
 			Status:       "up",
 			Bootstrapped: false,
 		},
+		logger: iopts.Logger(),
 	}
 	checkedBytesPoolOpts := checked.NewBytesOptions().
 		SetFinalizer(checked.BytesFinalizerFn(func(b checked.Bytes) {
@@ -262,6 +265,13 @@ func (s *service) FetchBatchRaw(tctx thrift.Context, req *rpc.FetchBatchRawReque
 		tsID := s.newID(ctx, req.Ids[i])
 		encoded, err := s.db.ReadEncoded(ctx, nsID, tsID, start, end)
 		if err != nil {
+			s.logger.WithFields(
+				xlog.NewField("nsID", nsID),
+				xlog.NewField("tsID", tsID),
+				xlog.NewField("start", start),
+				xlog.NewField("end", end),
+				xlog.NewField("func", "db.ReadEncoded"),
+			).Error(err.Error())
 			rawResult.Err = convert.ToRPCError(err)
 			if tterrors.IsBadRequestError(rawResult.Err) {
 				nonRetryableErrors++
@@ -277,6 +287,13 @@ func (s *service) FetchBatchRaw(tctx thrift.Context, req *rpc.FetchBatchRawReque
 			var seg *rpc.Segments
 			seg, streamErr = convert.ToSegments(readers)
 			if streamErr != nil {
+				s.logger.WithFields(
+					xlog.NewField("nsID", nsID),
+					xlog.NewField("tsID", tsID),
+					xlog.NewField("start", start),
+					xlog.NewField("end", end),
+					xlog.NewField("func", "convert.ToSegments"),
+				).Error(err.Error())
 				rawResult.Err = convert.ToRPCError(err)
 				if tterrors.IsBadRequestError(rawResult.Err) {
 					nonRetryableErrors++
