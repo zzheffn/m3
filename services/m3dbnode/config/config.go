@@ -25,6 +25,7 @@ import (
 
 	etcdclient "github.com/m3db/m3cluster/client/etcd"
 	"github.com/m3db/m3db/client"
+	"github.com/m3db/m3db/persist/fs/commitlog"
 	"github.com/m3db/m3db/topology"
 	"github.com/m3db/m3x/config/hostid"
 	"github.com/m3db/m3x/instrument"
@@ -163,6 +164,9 @@ type BlockRetrievePolicy struct {
 
 // CommitLogPolicy is the commit log policy.
 type CommitLogPolicy struct {
+	// The commit log integrity strategy for persistence.
+	Strategy commitlog.Strategy `yaml:"strategy"`
+
 	// The max size the commit log will flush a segment to disk after buffering.
 	FlushMaxBytes int `yaml:"flushMaxBytes" validate:"nonzero"`
 

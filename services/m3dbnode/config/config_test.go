@@ -95,6 +95,7 @@ bootstrap:
         numProcessorsPerCPU: 0.125
 
 commitlog:
+    strategy: write_behind
     flushMaxBytes: 524288
     flushEvery: 1s
     queue:
@@ -338,6 +339,7 @@ fs:
 blockRetrieve:
   fetchConcurrency: 0
 commitlog:
+  strategy: write_behind
   flushMaxBytes: 524288
   flushEvery: 1s
   queue:

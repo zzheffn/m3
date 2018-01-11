@@ -32,21 +32,6 @@ import (
 	xtime "github.com/m3db/m3x/time"
 )
 
-// Strategy describes the commit log writing strategy
-type Strategy int
-
-const (
-	// StrategyWriteWait describes the strategy that waits
-	// for the buffered commit log chunk that contains a write to flush
-	// before acknowledging a write
-	StrategyWriteWait Strategy = iota
-
-	// StrategyWriteBehind describes the strategy that does not wait
-	// for the buffered commit log chunk that contains a write to flush
-	// before acknowledging a write
-	StrategyWriteBehind
-)
-
 // CommitLog provides a synchronized commit log
 type CommitLog interface {
 	// Open the commit log

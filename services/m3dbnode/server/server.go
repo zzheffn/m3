@@ -53,7 +53,6 @@ import (
 	ttcluster "github.com/m3db/m3db/network/server/tchannelthrift/cluster"
 	ttnode "github.com/m3db/m3db/network/server/tchannelthrift/node"
 	"github.com/m3db/m3db/persist/fs"
-	"github.com/m3db/m3db/persist/fs/commitlog"
 	"github.com/m3db/m3db/ratelimit"
 	"github.com/m3db/m3db/retention"
 	m3dbruntime "github.com/m3db/m3db/runtime"
@@ -199,7 +198,7 @@ func Run(runOpts RunOptions) {
 	opts = opts.SetCommitLogOptions(opts.CommitLogOptions().
 		SetInstrumentOptions(opts.InstrumentOptions()).
 		SetFilesystemOptions(fsopts).
-		SetStrategy(commitlog.StrategyWriteBehind).
+		SetStrategy(cfg.CommitLog.Strategy).
 		SetFlushSize(cfg.CommitLog.FlushMaxBytes).
 		SetFlushInterval(cfg.CommitLog.FlushEvery).
 		SetBacklogQueueSize(commitLogQueueSize).
