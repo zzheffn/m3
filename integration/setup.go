@@ -270,6 +270,17 @@ func newTestSetup(t *testing.T, opts testOptions, fsOpts fs.Options) (*testSetup
 		}
 	}
 
+	// Set up wired list if required
+	if storageOpts.SeriesCachePolicy() == series.CacheLRU {
+		wiredList := block.NewWiredList(
+			runtimeOptsMgr,
+			storageOpts.InstrumentOptions(),
+			storageOpts.ClockOptions(),
+		)
+		blockOpts := storageOpts.DatabaseBlockOptions().SetWiredList(wiredList)
+		storageOpts = storageOpts.SetDatabaseBlockOptions(blockOpts)
+	}
+
 	return &testSetup{
 		t:               t,
 		opts:            opts,

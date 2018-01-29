@@ -26,10 +26,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/m3db/m3db/clock"
 	"github.com/m3db/m3db/runtime"
 	"github.com/m3db/m3db/ts"
 	"github.com/m3db/m3x/checked"
-	"github.com/m3db/m3x/clock"
 	"github.com/m3db/m3x/instrument"
 
 	"github.com/golang/mock/gomock"
