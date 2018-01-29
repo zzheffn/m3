@@ -273,6 +273,8 @@ func (b *dbBlock) resetSegmentWithLock(seg ts.Segment) {
 	b.wasRetrieved = false
 
 	b.ctx.RegisterFinalizer(&seg)
+
+	b.updateWiredList()
 }
 
 func (b *dbBlock) resetRetrievableWithLock(
@@ -286,6 +288,8 @@ func (b *dbBlock) resetRetrievableWithLock(
 	b.retriever = retriever
 	b.retrieveID = metadata.ID
 	b.wasRetrieved = false
+
+	b.updateWiredList()
 }
 
 func (b *dbBlock) updateWiredList() {
@@ -346,6 +350,8 @@ func (b *dbBlock) Close() {
 	if pool := b.opts.DatabaseBlockPool(); pool != nil {
 		pool.Put(b)
 	}
+
+	b.updateWiredList()
 }
 
 func (b *dbBlock) resetMergeTargetWithLock() {
