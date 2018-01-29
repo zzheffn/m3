@@ -385,4 +385,10 @@ type Options interface {
 
 	// BytesPool returns the bytesPool
 	BytesPool() pool.CheckedBytesPool
+
+	// SetWiredList sets the database block wired list
+	SetWiredList(value *WiredList) Options
+
+	// WiredList returns the database block wired list
+	WiredList() *WiredList
 }

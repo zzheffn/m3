@@ -57,6 +57,11 @@ type dbBlock struct {
 	retrieveID   ts.ID
 	wasRetrieved bool
 
+	// TODO: Comment
+	next                      *dbBlock
+	prev                      *dbBlock
+	nextPrevUpdatedAtUnixNano int64
+
 	closed bool
 }
 
@@ -281,6 +286,34 @@ func (b *dbBlock) resetRetrievableWithLock(
 	b.retriever = retriever
 	b.retrieveID = metadata.ID
 	b.wasRetrieved = false
+}
+
+func (b *dbBlock) isWiredWithLock() bool {
+	// TODO: Is this equivalent to checking if its empty?
+	return !(b.segment.Len() == 0)
+}
+
+type wiredListEntry struct {
+	start      time.Time
+	length     int
+	checksum   uint32
+	wired      bool
+	retriever  DatabaseShardBlockRetriever
+	retrieveID ts.ID
+}
+
+func (b *dbBlock) wiredListEntry() wiredListEntry {
+	b.RLock()
+	result := wiredListEntry{
+		start:      b.startWithLock(),
+		length:     b.length,
+		checksum:   b.checksum,
+		wired:      b.isWiredWithLock(),
+		retriever:  b.retriever,
+		retrieveID: b.retrieveID,
+	}
+	b.RUnlock()
+	return result
 }
 
 func (b *dbBlock) Close() {

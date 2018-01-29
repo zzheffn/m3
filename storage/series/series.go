@@ -308,7 +308,7 @@ func (s *dbSeries) FetchBlocksMetadata(
 		}
 		if !opts.IncludeCachedBlocks && b.IsCachedBlock() {
 			// Do not include cached blocks if not specified to, this is
-			// to avoid high amounts of duplication if a significant of
+			// to avoid high amounts of duplication if a significant number of
 			// blocks are cached in memory when returning blocks metadata
 			// from both in-memory and disk structures.
 			continue
