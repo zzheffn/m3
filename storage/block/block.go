@@ -288,6 +288,12 @@ func (b *dbBlock) resetRetrievableWithLock(
 	b.wasRetrieved = false
 }
 
+func (b *dbBlock) updateWiredList() {
+	if list := b.opts.WiredList(); list != nil {
+		list.update(b)
+	}
+}
+
 func (b *dbBlock) isWiredWithLock() bool {
 	// TODO: Is this equivalent to checking if its empty?
 	return !(b.segment.Len() == 0)
