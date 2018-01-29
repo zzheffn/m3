@@ -160,7 +160,7 @@ func TestWiredListRemovesUnwiredBlocks(t *testing.T) {
 }
 
 // wiredListTestWiredBlocksString use for debugging order of wired list
-func wiredListTestWiredBlocksString(l *WiredList) string {
+func wiredListTestWiredBlocksString(l *WiredList) string { // nolint: unused
 	b := bytes.NewBuffer(nil)
 	for bl := l.root.next; bl != &l.root; bl = bl.next {
 		b.WriteString(fmt.Sprintf("%s\n", string(bl.segment.Head.Get())))

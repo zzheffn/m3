@@ -191,7 +191,6 @@ func (l *WiredList) remove(v *dbBlock) {
 	v.next = nil // avoid memory leaks
 	v.prev = nil // avoid memory leaks
 	l.length--
-	return
 }
 
 func (l *WiredList) pushBack(v *dbBlock) {
