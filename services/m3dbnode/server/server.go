@@ -69,6 +69,7 @@ import (
 	xlog "github.com/m3db/m3x/log"
 	"github.com/m3db/m3x/pool"
 
+	"github.com/coreos/etcd/embed"
 	"github.com/uber-go/tally"
 )
 
@@ -109,6 +110,25 @@ func Run(runOpts RunOptions) {
 	scope, _, err := cfg.Metrics.NewRootScope()
 	if err != nil {
 		logger.Fatalf("could not connect to metrics: %v", err)
+	}
+
+	if cfg.EnvironmentConfig.KV == nil {
+		logger.Fatal("kv config cannot be nil")
+	}
+
+	if cfg.EnvironmentConfig.KV.Mode == "embed" {
+		kvCfg := cfg.EnvironmentConfig.KV.Server
+		if kvCfg != nil {
+			etcdCfg, err := environment.GetETCDConfig(kvCfg)
+			if err != nil {
+				logger.Fatalf("unable to create etcd config: %v", err)
+			}
+			e, err := embed.StartEtcd(etcdCfg)
+			if err != nil {
+				logger.Fatalf("could not start embedded etcd: %v", err)
+			}
+			defer e.Close()
+		}
 	}
 
 	opts := storage.NewOptions()
@@ -258,30 +278,27 @@ func Run(runOpts RunOptions) {
 		envCfg environment.ConfigureResults
 	)
 
-	switch {
-	case cfg.EnvironmentConfig.Service != nil:
+	if cfg.EnvironmentConfig.Static == nil {
 		logger.Info("creating dynamic config service client with m3cluster")
 
 		envCfg, err = cfg.EnvironmentConfig.Configure(environment.ConfigurationParameters{
-			InstrumentOpts: iopts,
-			HashingSeed:    cfg.Hashing.Seed,
+			InstrumentOpts:   iopts,
+			HashingSeed:      cfg.Hashing.Seed,
+			NamespaceTimeout: cfg.EnvironmentConfig.KV.Server.NamespaceTimeout,
 		})
 		if err != nil {
 			logger.Fatalf("could not initialize dynamic config: %v", err)
 		}
-
-	case cfg.EnvironmentConfig.Static != nil:
+	} else {
 		logger.Info("creating static config service client with m3cluster")
 
 		envCfg, err = cfg.EnvironmentConfig.Configure(environment.ConfigurationParameters{
-			HostID: hostID,
+			InstrumentOpts: iopts,
+			HostID:         hostID,
 		})
 		if err != nil {
 			logger.Fatalf("could not initialize static config: %v", err)
 		}
-
-	default:
-		logger.Fatal("config service or static configuration required")
 	}
 
 	opts = opts.SetNamespaceInitializer(envCfg.NamespaceInitializer)

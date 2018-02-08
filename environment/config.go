@@ -23,11 +23,12 @@ package environment
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
+	"github.com/coreos/etcd/embed"
 	etcdclient "github.com/m3db/m3cluster/client/etcd"
 	"github.com/m3db/m3cluster/kv"
-	m3clusterkvmem "github.com/m3db/m3cluster/kv/mem"
 	"github.com/m3db/m3cluster/services"
 	"github.com/m3db/m3cluster/shard"
 	"github.com/m3db/m3db/kvconfig"
@@ -46,11 +47,30 @@ var (
 
 // Configuration is a configuration that can be used to create namespaces, a topology, and kv store
 type Configuration struct {
-	// Service is used when a topology initializer is not supplied.
-	Service *etcdclient.Configuration `yaml:"service"`
-
 	// StaticConfiguration is used for running M3DB with a static config
 	Static *StaticConfiguration `yaml:"static"`
+
+	// KV sets the kv configuration for either a clustered or embedded etcd
+	KV *KVConfig `yaml:"kv"`
+}
+
+// KVConfig sets the configs for the KV client and server
+type KVConfig struct {
+	Mode   string                    `yaml:"mode"`
+	Client *etcdclient.Configuration `yaml:"client"`
+	Server *EmbeddedKV               `yaml:"server"`
+}
+
+// EmbeddedKV defines specific fields for the embedded kv server
+type EmbeddedKV struct {
+	Dir              string        `yaml:"dir"`
+	APUrls           []string      `yaml:"initial-advertise-peer-urls"`
+	ACUrls           []string      `yaml:"advertise-client-urls"`
+	LPUrls           []string      `yaml:"listen-peer-urls"`
+	LCUrls           []string      `yaml:"listen-client-urls"`
+	InitialCluster   string        `yaml:"initial-cluster"`
+	Name             string        `yaml:"name"`
+	NamespaceTimeout time.Duration `yaml:"namespace-timeout"`
 }
 
 // StaticConfiguration is used for running M3DB with a static config
@@ -95,9 +115,10 @@ type ConfigureResults struct {
 
 // ConfigurationParameters are options used to create new ConfigureResults
 type ConfigurationParameters struct {
-	InstrumentOpts instrument.Options
-	HashingSeed    uint32
-	HostID         string
+	InstrumentOpts   instrument.Options
+	HashingSeed      uint32
+	HostID           string
+	NamespaceTimeout time.Duration
 }
 
 // Configure creates a new ConfigureResults
@@ -105,26 +126,28 @@ func (c Configuration) Configure(cfgParams ConfigurationParameters) (ConfigureRe
 
 	var emptyConfig ConfigureResults
 
-	switch {
-	case c.Service != nil:
-		configSvcClientOpts := c.Service.NewOptions().
-			SetInstrumentOptions(cfgParams.InstrumentOpts)
-		configSvcClient, err := etcdclient.NewConfigServiceClient(configSvcClientOpts)
-		if err != nil {
-			err = fmt.Errorf("could not create m3cluster client: %v", err)
-			return emptyConfig, err
-		}
+	configSvcClientOpts := c.KV.Client.NewOptions().
+		SetInstrumentOptions(cfgParams.InstrumentOpts).
+		SetServiceDiscoveryConfig(c.KV.Client.SDConfig)
+	configSvcClient, err := etcdclient.NewConfigServiceClient(configSvcClientOpts)
+	if err != nil {
+		err = fmt.Errorf("could not create m3cluster client: %v", err)
+		return emptyConfig, err
+	}
 
+	switch {
+	case c.Static == nil:
 		dynamicOpts := namespace.NewDynamicOptions().
 			SetInstrumentOptions(cfgParams.InstrumentOpts).
 			SetConfigServiceClient(configSvcClient).
-			SetNamespaceRegistryKey(kvconfig.NamespacesKey)
+			SetNamespaceRegistryKey(kvconfig.NamespacesKey).
+			SetInitTimeout(cfgParams.NamespaceTimeout)
 		nsInit := namespace.NewDynamicInitializer(dynamicOpts)
 
 		serviceID := services.NewServiceID().
-			SetName(c.Service.Service).
-			SetEnvironment(c.Service.Env).
-			SetZone(c.Service.Zone)
+			SetName(c.KV.Client.Service).
+			SetEnvironment(c.KV.Client.Env).
+			SetZone(c.KV.Client.Zone)
 
 		topoOpts := topology.NewDynamicOptions().
 			SetConfigServiceClient(configSvcClient).
@@ -172,7 +195,11 @@ func (c Configuration) Configure(cfgParams ConfigurationParameters) (ConfigureRe
 
 		topoInit := topology.NewStaticInitializer(staticOptions)
 
-		kv := m3clusterkvmem.NewStore()
+		kv, err := configSvcClient.KV()
+		if err != nil {
+			err = fmt.Errorf("could not create KV client, %v", err)
+			return emptyConfig, err
+		}
 
 		configureResults := ConfigureResults{
 			NamespaceInitializer: nsInitStatic,
@@ -245,4 +272,46 @@ func newNamespaceMetadata(cfg StaticNamespaceConfiguration) (namespace.Metadata,
 	}
 
 	return md, nil
+}
+
+// GetETCDConfig creates a new embedded etcd config from kv config
+func GetETCDConfig(kvCfg *EmbeddedKV) (*embed.Config, error) {
+	newKVCfg := embed.NewConfig()
+	newKVCfg.Dir = kvCfg.Dir
+	APUrls, err := convertToURLs(kvCfg.APUrls)
+	if err != nil {
+		return nil, errors.New("unable to convert APUrls")
+	}
+	ACUrls, err := convertToURLs(kvCfg.ACUrls)
+	if err != nil {
+		return nil, errors.New("unable to convert ACUrls")
+	}
+	LPUrls, err := convertToURLs(kvCfg.LPUrls)
+	if err != nil {
+		return nil, errors.New("unable to convert LPUrls")
+	}
+	LCUrls, err := convertToURLs(kvCfg.LCUrls)
+	if err != nil {
+		return nil, errors.New("unable to convert LCUrls")
+	}
+	newKVCfg.APUrls = APUrls
+	newKVCfg.ACUrls = ACUrls
+	newKVCfg.LPUrls = LPUrls
+	newKVCfg.LCUrls = LCUrls
+	newKVCfg.InitialCluster = kvCfg.InitialCluster
+	newKVCfg.Name = kvCfg.Name
+
+	return newKVCfg, nil
+}
+
+func convertToURLs(rawURLs []string) ([]url.URL, error) {
+	var urls []url.URL
+	for _, u := range rawURLs {
+		parsed, err := url.Parse(u)
+		if err != nil {
+			return nil, err
+		}
+		urls = append(urls, *parsed)
+	}
+	return urls, nil
 }
