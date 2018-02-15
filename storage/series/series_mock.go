@@ -147,6 +147,14 @@ func (_mr *_MockDatabaseSeriesRecorder) NumActiveBlocks() *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "NumActiveBlocks")
 }
 
+func (_m *MockDatabaseSeries) OnEvictedFromWiredList(_param0 ident.ID, _param1 time.Time) {
+	_m.ctrl.Call(_m, "OnEvictedFromWiredList", _param0, _param1)
+}
+
+func (_mr *_MockDatabaseSeriesRecorder) OnEvictedFromWiredList(arg0, arg1 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "OnEvictedFromWiredList", arg0, arg1)
+}
+
 func (_m *MockDatabaseSeries) OnRetrieveBlock(_param0 ident.ID, _param1 time.Time, _param2 ts.Segment) {
 	_m.ctrl.Call(_m, "OnRetrieveBlock", _param0, _param1, _param2)
 }
@@ -166,12 +174,12 @@ func (_mr *_MockDatabaseSeriesRecorder) ReadEncoded(arg0, arg1, arg2 interface{}
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "ReadEncoded", arg0, arg1, arg2)
 }
 
-func (_m *MockDatabaseSeries) Reset(_param0 ident.ID, _param1 QueryableBlockRetriever, _param2 block.OnRetrieveBlock, _param3 Options) {
-	_m.ctrl.Call(_m, "Reset", _param0, _param1, _param2, _param3)
+func (_m *MockDatabaseSeries) Reset(_param0 ident.ID, _param1 QueryableBlockRetriever, _param2 block.OnRetrieveBlock, _param3 block.Owner, _param4 Options) {
+	_m.ctrl.Call(_m, "Reset", _param0, _param1, _param2, _param3, _param4)
 }
 
-func (_mr *_MockDatabaseSeriesRecorder) Reset(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "Reset", arg0, arg1, arg2, arg3)
+func (_mr *_MockDatabaseSeriesRecorder) Reset(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "Reset", arg0, arg1, arg2, arg3, arg4)
 }
 
 func (_m *MockDatabaseSeries) Tick() (TickResult, error) {

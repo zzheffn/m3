@@ -203,6 +203,26 @@ func (_mr *_MockOptionsRecorder) TickMinimumInterval() *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "TickMinimumInterval")
 }
 
+func (_m *MockOptions) SetMaxWiredBlocks(value int) Options {
+	ret := _m.ctrl.Call(_m, "SetMaxWiredBlocks", value)
+	ret0, _ := ret[0].(Options)
+	return ret0
+}
+
+func (_mr *_MockOptionsRecorder) SetMaxWiredBlocks(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "SetMaxWiredBlocks", arg0)
+}
+
+func (_m *MockOptions) MaxWiredBlocks() int {
+	ret := _m.ctrl.Call(_m, "MaxWiredBlocks")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+func (_mr *_MockOptionsRecorder) MaxWiredBlocks() *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "MaxWiredBlocks")
+}
+
 // Mock of OptionsManager interface
 type MockOptionsManager struct {
 	ctrl     *gomock.Controller
