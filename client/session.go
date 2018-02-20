@@ -1244,6 +1244,7 @@ func (s *session) FetchBlocksMetadataFromPeers(
 	namespace ident.ID,
 	shard uint32,
 	start, end time.Time,
+	resultOpts result.Options,
 	version FetchBlocksMetadataEndpointVersion,
 ) (PeerBlocksMetadataIter, error) {
 	peers, err := s.peersForShard(shard)
@@ -1258,8 +1259,8 @@ func (s *session) FetchBlocksMetadataFromPeers(
 	)
 
 	go func() {
-		errCh <- s.streamBlocksMetadataFromPeers(
-			namespace, shard, peers, start, end, metadataCh, m, version)
+		errCh <- s.streamBlocksMetadataFromPeers(namespace, shard,
+			peers, start, end, metadataCh, resultOpts, m, version)
 		close(metadataCh)
 		close(errCh)
 	}()
@@ -1314,8 +1315,8 @@ func (s *session) FetchBootstrapBlocksFromPeers(
 	// all the peers and pushing them into the metadatach
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- s.streamBlocksMetadataFromPeers(
-			nsMetadata.ID(), shard, peers, start, end, metadataCh, progress, version)
+		errCh <- s.streamBlocksMetadataFromPeers(nsMetadata.ID(), shard,
+			peers, start, end, metadataCh, opts, progress, version)
 		close(metadataCh)
 	}()
 
@@ -1431,6 +1432,7 @@ func (s *session) streamBlocksMetadataFromPeers(
 	peers []peer,
 	start, end time.Time,
 	metadataCh chan<- blocksMetadata,
+	resultOpts result.Options,
 	progress *streamFromPeersMetrics,
 	version FetchBlocksMetadataEndpointVersion,
 ) error {
@@ -1454,11 +1456,11 @@ func (s *session) streamBlocksMetadataFromPeers(
 
 			switch version {
 			case FetchBlocksMetadataEndpointV1:
-				err = s.streamBlocksMetadataFromPeer(
-					namespace, shard, peer, start, end, metadataCh, progress)
+				err = s.streamBlocksMetadataFromPeer(namespace, shard,
+					peer, start, end, metadataCh, progress)
 			case FetchBlocksMetadataEndpointV2:
-				err = s.streamBlocksMetadataFromPeerV2(
-					namespace, shard, peer, start, end, metadataCh, progress)
+				err = s.streamBlocksMetadataFromPeerV2(namespace, shard,
+					peer, start, end, metadataCh, resultOpts, progress)
 			// Should never happen - we validate the version before this function is
 			// ever called
 			default:
@@ -1638,6 +1640,7 @@ func (s *session) streamBlocksMetadataFromPeerV2(
 	peer peer,
 	start, end time.Time,
 	metadataCh chan<- blocksMetadata,
+	resultOpts result.Options,
 	progress *streamFromPeersMetrics,
 ) error {
 	var (
@@ -1646,6 +1649,10 @@ func (s *session) streamBlocksMetadataFromPeerV2(
 		optionIncludeChecksums = true
 		optionIncludeLastRead  = true
 		moreResults            = true
+		bytesPool              = resultOpts.DatabaseBlockOptions().BytesPool()
+		idPool                 = s.idPool
+		reusedIDBytes          = checked.NewBytes(nil, nil)
+		reusedID               = ident.BinaryID(reusedIDBytes)
 
 		// Only used for logs
 		peerStr              = peer.Host().ID()
@@ -1699,12 +1706,20 @@ func (s *session) streamBlocksMetadataFromPeerV2(
 
 		for _, elem := range result.Elements {
 			blockStart := time.Unix(0, elem.Start)
+
+			// Reset the reused ID data
+			reusedIDBytes.Resize(0)
+			reusedIDBytes.AppendAll(elem.ID)
+
+			// Clone the ID
+			clonedID := idPool.Clone(reusedID)
+
 			// Error occurred retrieving block metadata, use default values
 			if elem.Err != nil {
 				progress.metadataFetchBatchBlockErr.Inc(1)
 				metadataCh <- blocksMetadata{
 					peer: peer,
-					id:   ident.BinaryID(checked.NewBytes(elem.ID, nil)),
+					id:   clonedID,
 					blocks: []blockMetadata{
 						{start: blockStart},
 					},
@@ -1739,7 +1754,7 @@ func (s *session) streamBlocksMetadataFromPeerV2(
 
 			metadataCh <- blocksMetadata{
 				peer: peer,
-				id:   ident.BinaryID(checked.NewBytes(elem.ID, nil)),
+				id:   clonedID,
 				blocks: []blockMetadata{
 					{start: blockStart,
 						size:     size,
