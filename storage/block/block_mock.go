@@ -306,14 +306,14 @@ func (_mr *_MockDatabaseBlockRecorder) IsRetrieved() *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "IsRetrieved")
 }
 
-func (_m *MockDatabaseBlock) WasRetrieved() bool {
-	ret := _m.ctrl.Call(_m, "WasRetrieved")
+func (_m *MockDatabaseBlock) WasRetrievedFromDisk() bool {
+	ret := _m.ctrl.Call(_m, "WasRetrievedFromDisk")
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-func (_mr *_MockDatabaseBlockRecorder) WasRetrieved() *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "WasRetrieved")
+func (_mr *_MockDatabaseBlockRecorder) WasRetrievedFromDisk() *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "WasRetrievedFromDisk")
 }
 
 func (_m *MockDatabaseBlock) IsCachedBlock() bool {
@@ -350,6 +350,117 @@ func (_mr *_MockDatabaseBlockRecorder) Close() *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Close")
 }
 
+func (_m *MockDatabaseBlock) SetOwner(_param0 Owner) {
+	_m.ctrl.Call(_m, "SetOwner", _param0)
+}
+
+func (_mr *_MockDatabaseBlockRecorder) SetOwner(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "SetOwner", arg0)
+}
+
+func (_m *MockDatabaseBlock) Owner() Owner {
+	ret := _m.ctrl.Call(_m, "Owner")
+	ret0, _ := ret[0].(Owner)
+	return ret0
+}
+
+func (_mr *_MockDatabaseBlockRecorder) Owner() *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "Owner")
+}
+
+func (_m *MockDatabaseBlock) next() DatabaseBlock {
+	ret := _m.ctrl.Call(_m, "next")
+	ret0, _ := ret[0].(DatabaseBlock)
+	return ret0
+}
+
+func (_mr *_MockDatabaseBlockRecorder) next() *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "next")
+}
+
+func (_m *MockDatabaseBlock) setNext(block DatabaseBlock) {
+	_m.ctrl.Call(_m, "setNext", block)
+}
+
+func (_mr *_MockDatabaseBlockRecorder) setNext(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "setNext", arg0)
+}
+
+func (_m *MockDatabaseBlock) prev() DatabaseBlock {
+	ret := _m.ctrl.Call(_m, "prev")
+	ret0, _ := ret[0].(DatabaseBlock)
+	return ret0
+}
+
+func (_mr *_MockDatabaseBlockRecorder) prev() *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "prev")
+}
+
+func (_m *MockDatabaseBlock) setPrev(block DatabaseBlock) {
+	_m.ctrl.Call(_m, "setPrev", block)
+}
+
+func (_mr *_MockDatabaseBlockRecorder) setPrev(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "setPrev", arg0)
+}
+
+func (_m *MockDatabaseBlock) nextPrevUpdatedAtUnixNano() int64 {
+	ret := _m.ctrl.Call(_m, "nextPrevUpdatedAtUnixNano")
+	ret0, _ := ret[0].(int64)
+	return ret0
+}
+
+func (_mr *_MockDatabaseBlockRecorder) nextPrevUpdatedAtUnixNano() *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "nextPrevUpdatedAtUnixNano")
+}
+
+func (_m *MockDatabaseBlock) setNextPrevUpdatedAtUnixNano(value int64) {
+	_m.ctrl.Call(_m, "setNextPrevUpdatedAtUnixNano", value)
+}
+
+func (_mr *_MockDatabaseBlockRecorder) setNextPrevUpdatedAtUnixNano(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "setNextPrevUpdatedAtUnixNano", arg0)
+}
+
+func (_m *MockDatabaseBlock) wiredListEntry() wiredListEntry {
+	ret := _m.ctrl.Call(_m, "wiredListEntry")
+	ret0, _ := ret[0].(wiredListEntry)
+	return ret0
+}
+
+func (_mr *_MockDatabaseBlockRecorder) wiredListEntry() *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "wiredListEntry")
+}
+
+// Mock of Owner interface
+type MockOwner struct {
+	ctrl     *gomock.Controller
+	recorder *_MockOwnerRecorder
+}
+
+// Recorder for MockOwner (not exported)
+type _MockOwnerRecorder struct {
+	mock *MockOwner
+}
+
+func NewMockOwner(ctrl *gomock.Controller) *MockOwner {
+	mock := &MockOwner{ctrl: ctrl}
+	mock.recorder = &_MockOwnerRecorder{mock}
+	return mock
+}
+
+func (_m *MockOwner) EXPECT() *_MockOwnerRecorder {
+	return _m.recorder
+}
+
+func (_m *MockOwner) OnEvictedFromWiredList(id ident.ID, blockStart time.Time) {
+	_m.ctrl.Call(_m, "OnEvictedFromWiredList", id, blockStart)
+}
+
+func (_mr *_MockOwnerRecorder) OnEvictedFromWiredList(arg0, arg1 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "OnEvictedFromWiredList", arg0, arg1)
+}
+
 // Mock of OnRetrieveBlock interface
 type MockOnRetrieveBlock struct {
 	ctrl     *gomock.Controller
@@ -377,6 +488,35 @@ func (_m *MockOnRetrieveBlock) OnRetrieveBlock(id ident.ID, startTime time.Time,
 
 func (_mr *_MockOnRetrieveBlockRecorder) OnRetrieveBlock(arg0, arg1, arg2 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "OnRetrieveBlock", arg0, arg1, arg2)
+}
+
+// Mock of OnReadBlock interface
+type MockOnReadBlock struct {
+	ctrl     *gomock.Controller
+	recorder *_MockOnReadBlockRecorder
+}
+
+// Recorder for MockOnReadBlock (not exported)
+type _MockOnReadBlockRecorder struct {
+	mock *MockOnReadBlock
+}
+
+func NewMockOnReadBlock(ctrl *gomock.Controller) *MockOnReadBlock {
+	mock := &MockOnReadBlock{ctrl: ctrl}
+	mock.recorder = &_MockOnReadBlockRecorder{mock}
+	return mock
+}
+
+func (_m *MockOnReadBlock) EXPECT() *_MockOnReadBlockRecorder {
+	return _m.recorder
+}
+
+func (_m *MockOnReadBlock) OnReadBlock(b DatabaseBlock) {
+	_m.ctrl.Call(_m, "OnReadBlock", b)
+}
+
+func (_mr *_MockOnReadBlockRecorder) OnReadBlock(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "OnReadBlock", arg0)
 }
 
 // Mock of DatabaseBlockRetriever interface
@@ -980,4 +1120,24 @@ func (_m *MockOptions) BytesPool() pool.CheckedBytesPool {
 
 func (_mr *_MockOptionsRecorder) BytesPool() *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "BytesPool")
+}
+
+func (_m *MockOptions) SetWiredList(value *WiredList) Options {
+	ret := _m.ctrl.Call(_m, "SetWiredList", value)
+	ret0, _ := ret[0].(Options)
+	return ret0
+}
+
+func (_mr *_MockOptionsRecorder) SetWiredList(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "SetWiredList", arg0)
+}
+
+func (_m *MockOptions) WiredList() *WiredList {
+	ret := _m.ctrl.Call(_m, "WiredList")
+	ret0, _ := ret[0].(*WiredList)
+	return ret0
+}
+
+func (_mr *_MockOptionsRecorder) WiredList() *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "WiredList")
 }

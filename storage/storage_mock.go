@@ -906,6 +906,14 @@ func (_mr *_MockdatabaseShardRecorder) IsBootstrapped() *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "IsBootstrapped")
 }
 
+func (_m *MockdatabaseShard) OnEvictedFromWiredList(id ident.ID, blockStart time.Time) {
+	_m.ctrl.Call(_m, "OnEvictedFromWiredList", id, blockStart)
+}
+
+func (_mr *_MockdatabaseShardRecorder) OnEvictedFromWiredList(arg0, arg1 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "OnEvictedFromWiredList", arg0, arg1)
+}
+
 func (_m *MockdatabaseShard) Close() error {
 	ret := _m.ctrl.Call(_m, "Close")
 	ret0, _ := ret[0].(error)
