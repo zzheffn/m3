@@ -1462,7 +1462,6 @@ func (s *dbShard) Flush(
 		NsMetadata:  s.namespace,
 		Shard:       s.ID(),
 		PersistTime: blockStart,
-		// IsSnapshot: true,
 	}
 	prepared, err := flush.Prepare(prepareOpts)
 	multiErr = multiErr.Add(err)
