@@ -165,9 +165,9 @@ func TestShardFlushNoPersistFuncNoError(t *testing.T) {
 	flush := persist.NewMockFlush(ctrl)
 	prepared := persist.PreparedPersist{Persist: nil}
 	prepareOpts := persist.PrepareOptionsMatcher{
-		NsMetadata: s.namespace,
-		Shard:      s.shard,
-		BlockStart: blockStart,
+		NsMetadata:  s.namespace,
+		Shard:       s.shard,
+		PersistTime: blockStart,
 	}
 	flush.EXPECT().Prepare(prepareOpts).Return(prepared, nil)
 
@@ -197,9 +197,9 @@ func TestShardFlushNoPersistFuncWithError(t *testing.T) {
 	expectedErr := errors.New("some error")
 
 	prepareOpts := persist.PrepareOptionsMatcher{
-		NsMetadata: s.namespace,
-		Shard:      s.shard,
-		BlockStart: blockStart,
+		NsMetadata:  s.namespace,
+		Shard:       s.shard,
+		PersistTime: blockStart,
 	}
 	flush.EXPECT().Prepare(prepareOpts).Return(prepared, expectedErr)
 
@@ -236,9 +236,9 @@ func TestShardFlushSeriesFlushError(t *testing.T) {
 	}
 	expectedErr := errors.New("error foo")
 	prepareOpts := persist.PrepareOptionsMatcher{
-		NsMetadata: s.namespace,
-		Shard:      s.shard,
-		BlockStart: blockStart,
+		NsMetadata:  s.namespace,
+		Shard:       s.shard,
+		PersistTime: blockStart,
 	}
 	flush.EXPECT().Prepare(prepareOpts).Return(prepared, expectedErr)
 
@@ -302,9 +302,9 @@ func TestShardFlushSeriesFlushSuccess(t *testing.T) {
 	}
 
 	prepareOpts := persist.PrepareOptionsMatcher{
-		NsMetadata: s.namespace,
-		Shard:      s.shard,
-		BlockStart: blockStart,
+		NsMetadata:  s.namespace,
+		Shard:       s.shard,
+		PersistTime: blockStart,
 	}
 	flush.EXPECT().Prepare(prepareOpts).Return(prepared, nil)
 
