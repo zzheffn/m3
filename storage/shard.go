@@ -1541,7 +1541,7 @@ func (s *dbShard) Snapshot(
 		// Use a temporary context here so the stream readers can be returned to
 		// pool after we finish fetching flushing the series
 		tmpCtx.Reset()
-		err := series.Snapshot(tmpCtx, prepared.Persist)
+		err := series.Snapshot(tmpCtx, blockStart, prepared.Persist)
 		tmpCtx.BlockingClose()
 		multiErr = multiErr.Add(err)
 		// If we encounter an error when persisting a series, we continue regardless.
