@@ -159,8 +159,8 @@ type databaseNamespaceTickMetrics struct {
 	activeBlocks           tally.Gauge
 	openBlocks             tally.Gauge
 	wiredBlocks            tally.Gauge
-	wiredBlocksSeriesOnly  tally.Gauge
-	wiredBlocksBufferOnly  tally.Gauge
+	wiredBlocksSeries      tally.Gauge
+	wiredBlocksBuffer      tally.Gauge
 	unwiredBlocks          tally.Gauge
 	madeUnwiredBlocks      tally.Counter
 	madeExpiredBlocks      tally.Counter
@@ -203,8 +203,8 @@ func newDatabaseNamespaceMetrics(scope tally.Scope, samplingRate float64) databa
 			activeBlocks:           tickScope.Gauge("active-blocks"),
 			openBlocks:             tickScope.Gauge("open-blocks"),
 			wiredBlocks:            tickScope.Gauge("wired-blocks"),
-			wiredBlocksSeriesOnly:  tickScope.Gauge("wired-blocks-series-only"),
-			wiredBlocksBufferOnly:  tickScope.Gauge("wired-blocks-buffer-only"),
+			wiredBlocksSeries:      tickScope.Gauge("wired-blocks-series"),
+			wiredBlocksBuffer:      tickScope.Gauge("wired-blocks-buffer"),
 			unwiredBlocks:          tickScope.Gauge("unwired-blocks"),
 			madeUnwiredBlocks:      tickScope.Counter("made-unwired-blocks"),
 			madeExpiredBlocks:      tickScope.Counter("made-expired-blocks"),
@@ -452,8 +452,8 @@ func (n *dbNamespace) Tick(c context.Cancellable) error {
 	n.metrics.tick.activeBlocks.Update(float64(r.activeBlocks))
 	n.metrics.tick.openBlocks.Update(float64(r.openBlocks))
 	n.metrics.tick.wiredBlocks.Update(float64(r.wiredBlocks))
-	n.metrics.tick.wiredBlocksSeriesOnly.Update(float64(r.wiredBlocksSeriesOnly))
-	n.metrics.tick.wiredBlocksBufferOnly.Update(float64(r.wiredBlocksBufferOnly))
+	n.metrics.tick.wiredBlocksSeries.Update(float64(r.wiredBlocksSeries))
+	n.metrics.tick.wiredBlocksBuffer.Update(float64(r.wiredBlocksBuffer))
 	n.metrics.tick.unwiredBlocks.Update(float64(r.unwiredBlocks))
 	n.metrics.tick.madeExpiredBlocks.Inc(int64(r.madeExpiredBlocks))
 	n.metrics.tick.madeUnwiredBlocks.Inc(int64(r.madeUnwiredBlocks))
@@ -764,7 +764,7 @@ func (n *dbNamespace) Snapshot(flush persist.Flush) error {
 
 		// TODO: Make time period configurable or should we just always snapshots?
 		// TODO: Should probably have some relationship with flush timing as well. I.E
-		// TODO: Want to somehow prevent snapshotting accross blocks? maybe it doesn't matter
+		// TODO: Want to somehow prevent snapshotting across blocks? maybe it doesn't matter
 		// we should not perform a snapshot 3 seconds before we're about to flush.
 		if callStart.Sub(lastSuccessfulSnapshot) < 15*time.Minute {
 			// Skip snapshotting if not enough time has elapsed since

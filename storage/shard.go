@@ -592,8 +592,8 @@ func (s *dbShard) tickAndExpire(
 		r.activeBlocks += result.ActiveBlocks
 		r.openBlocks += result.OpenBlocks
 		r.wiredBlocks += result.WiredBlocks
-		r.wiredBlocksSeriesOnly += result.WiredBlocksSeriesOnly
-		r.wiredBlocksBufferOnly += result.WiredBlocksBufferOnly
+		r.wiredBlocksSeries += result.WiredBlocksSeries
+		r.wiredBlocksBuffer += result.WiredBlocksBuffer
 		r.unwiredBlocks += result.UnwiredBlocks
 		r.madeExpiredBlocks += result.MadeExpiredBlocks
 		r.madeUnwiredBlocks += result.MadeUnwiredBlocks
