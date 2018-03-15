@@ -178,7 +178,12 @@ func (entry *dbShardEntry) incrementReaderWriterCount() {
 }
 
 func (entry *dbShardEntry) decrementReaderWriterCount() {
-	atomic.AddInt32(&entry.curReadWriters, -1)
+	current := atomic.AddInt32(&entry.curReadWriters, -1)
+	if current < 0 {
+		err := fmt.Errorf("decremented series entry < 0 (%d) [ id = %s, bootstrapped=%t, empty=%v ]",
+			current, entry.series.ID(), entry.series.IsBootstrapped(), entry.series.IsEmpty())
+		panic(err)
+	}
 }
 
 type dbShardEntryWorkFn func(entry *dbShardEntry) bool
