@@ -906,6 +906,18 @@ func (_mr *MockdatabaseNamespaceMockRecorder) Flush(arg0, arg1 interface{}) *gom
 	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "Flush", reflect.TypeOf((*MockdatabaseNamespace)(nil).Flush), arg0, arg1)
 }
 
+// Snapshot mocks base method
+func (_m *MockdatabaseNamespace) Snapshot(blockStart time.Time, callStart time.Time, flush persist.Flush) error {
+	ret := _m.ctrl.Call(_m, "Snapshot", blockStart, callStart, flush)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Snapshot indicates an expected call of Snapshot
+func (_mr *MockdatabaseNamespaceMockRecorder) Snapshot(arg0, arg1, arg2 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "Snapshot", reflect.TypeOf((*MockdatabaseNamespace)(nil).Snapshot), arg0, arg1, arg2)
+}
+
 // NeedsFlush mocks base method
 func (_m *MockdatabaseNamespace) NeedsFlush(alignedInclusiveStart time.Time, alignedInclusiveEnd time.Time) bool {
 	ret := _m.ctrl.Call(_m, "NeedsFlush", alignedInclusiveStart, alignedInclusiveEnd)
@@ -1198,6 +1210,18 @@ func (_mr *MockdatabaseShardMockRecorder) Flush(arg0, arg1 interface{}) *gomock.
 	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "Flush", reflect.TypeOf((*MockdatabaseShard)(nil).Flush), arg0, arg1)
 }
 
+// Snapshot mocks base method
+func (_m *MockdatabaseShard) Snapshot(blockStart time.Time, snapshotStart time.Time, flush persist.Flush) error {
+	ret := _m.ctrl.Call(_m, "Snapshot", blockStart, snapshotStart, flush)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Snapshot indicates an expected call of Snapshot
+func (_mr *MockdatabaseShardMockRecorder) Snapshot(arg0, arg1, arg2 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "Snapshot", reflect.TypeOf((*MockdatabaseShard)(nil).Snapshot), arg0, arg1, arg2)
+}
+
 // FlushState mocks base method
 func (_m *MockdatabaseShard) FlushState(blockStart time.Time) fileOpState {
 	ret := _m.ctrl.Call(_m, "FlushState", blockStart)
@@ -1208,6 +1232,31 @@ func (_m *MockdatabaseShard) FlushState(blockStart time.Time) fileOpState {
 // FlushState indicates an expected call of FlushState
 func (_mr *MockdatabaseShardMockRecorder) FlushState(arg0 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "FlushState", reflect.TypeOf((*MockdatabaseShard)(nil).FlushState), arg0)
+}
+
+// SnapshotState mocks base method
+func (_m *MockdatabaseShard) SnapshotState() (bool, time.Time) {
+	ret := _m.ctrl.Call(_m, "SnapshotState")
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(time.Time)
+	return ret0, ret1
+}
+
+// SnapshotState indicates an expected call of SnapshotState
+func (_mr *MockdatabaseShardMockRecorder) SnapshotState() *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "SnapshotState", reflect.TypeOf((*MockdatabaseShard)(nil).SnapshotState))
+}
+
+// CleanupSnapshots mocks base method
+func (_m *MockdatabaseShard) CleanupSnapshots() error {
+	ret := _m.ctrl.Call(_m, "CleanupSnapshots")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CleanupSnapshots indicates an expected call of CleanupSnapshots
+func (_mr *MockdatabaseShardMockRecorder) CleanupSnapshots() *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "CleanupSnapshots", reflect.TypeOf((*MockdatabaseShard)(nil).CleanupSnapshots))
 }
 
 // CleanupFileset mocks base method
