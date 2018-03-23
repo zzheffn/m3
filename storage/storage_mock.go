@@ -2323,6 +2323,30 @@ func (_mr *MockOptionsMockRecorder) MaxFlushRetries() *gomock.Call {
 	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "MaxFlushRetries", reflect.TypeOf((*MockOptions)(nil).MaxFlushRetries))
 }
 
+// SetMinimumSnapshotInterval mocks base method
+func (_m *MockOptions) SetMinimumSnapshotInterval(value time.Duration) Options {
+	ret := _m.ctrl.Call(_m, "SetMinimumSnapshotInterval", value)
+	ret0, _ := ret[0].(Options)
+	return ret0
+}
+
+// SetMinimumSnapshotInterval indicates an expected call of SetMinimumSnapshotInterval
+func (_mr *MockOptionsMockRecorder) SetMinimumSnapshotInterval(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "SetMinimumSnapshotInterval", reflect.TypeOf((*MockOptions)(nil).SetMinimumSnapshotInterval), arg0)
+}
+
+// MinimumSnapshotInterval mocks base method
+func (_m *MockOptions) MinimumSnapshotInterval() time.Duration {
+	ret := _m.ctrl.Call(_m, "MinimumSnapshotInterval")
+	ret0, _ := ret[0].(time.Duration)
+	return ret0
+}
+
+// MinimumSnapshotInterval indicates an expected call of MinimumSnapshotInterval
+func (_mr *MockOptionsMockRecorder) MinimumSnapshotInterval() *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "MinimumSnapshotInterval", reflect.TypeOf((*MockOptions)(nil).MinimumSnapshotInterval))
+}
+
 // SetDatabaseBlockRetrieverManager mocks base method
 func (_m *MockOptions) SetDatabaseBlockRetrieverManager(value block.DatabaseBlockRetrieverManager) Options {
 	ret := _m.ctrl.Call(_m, "SetDatabaseBlockRetrieverManager", value)
