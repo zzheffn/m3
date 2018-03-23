@@ -391,7 +391,7 @@ func TestNamespaceFlushNotBootstrapped(t *testing.T) {
 
 func TestNamespaceFlushDontNeedFlush(t *testing.T) {
 	ns := newTestNamespaceWithIDOpts(t, defaultTestNs1ID,
-		namespace.NewOptions().SetNeedsFlush(false))
+		namespace.NewOptions().SetFlushEnabled(false))
 	ns.bs = bootstrapped
 	require.NoError(t, ns.Flush(time.Now(), nil))
 }

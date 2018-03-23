@@ -706,7 +706,7 @@ func (n *dbNamespace) Flush(
 	}
 	n.RUnlock()
 
-	if !n.nopts.NeedsFlush() {
+	if !n.nopts.FlushEnabled() {
 		n.metrics.flush.ReportSuccess(n.nowFn().Sub(callStart))
 		return nil
 	}
@@ -747,7 +747,7 @@ func (n *dbNamespace) Snapshot(blockStart, callStart time.Time, flush persist.Fl
 	}
 	n.RUnlock()
 
-	if !n.nopts.NeedsSnapshot() {
+	if !n.nopts.SnapshotEnabled() {
 		n.metrics.snapshot.ReportSuccess(n.nowFn().Sub(callStart))
 		return nil
 	}
@@ -843,7 +843,7 @@ func (n *dbNamespace) Repair(
 	repairer databaseShardRepairer,
 	tr xtime.Range,
 ) error {
-	if !n.nopts.NeedsRepair() {
+	if !n.nopts.RepairEnabled() {
 		return nil
 	}
 
