@@ -460,9 +460,9 @@ func newNamespaceProtoValue(id string) (proto.Message, error) {
 		ident.StringID(id),
 		namespace.NewOptions().
 			SetNeedsBootstrap(true).
-			SetNeedsFilesetCleanup(true).
-			SetNeedsFlush(true).
-			SetNeedsRepair(true).
+			SetCleanupEnabled(true).
+			SetFlushEnabled(true).
+			SetRepairEnabled(true).
 			SetWritesToCommitLog(true).
 			SetRetentionOptions(
 				retention.NewOptions().
