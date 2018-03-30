@@ -305,6 +305,14 @@ type AdminSession interface {
 		metadatas []block.ReplicaMetadata,
 		opts result.Options,
 	) (PeerBlocksIter, error)
+
+	// Pools returns the current active pools in use by the session,
+	// this is useful for reusing the pools in other parts of an application
+	Pools() SessionPools
+}
+
+type SessionPools struct {
+	// MultiReaderIteratorPool ...
 }
 
 type clientSession interface {

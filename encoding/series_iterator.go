@@ -29,15 +29,16 @@ import (
 )
 
 type seriesIterator struct {
-	id        ident.ID
-	nsID      ident.ID
-	start     time.Time
-	end       time.Time
-	iters     iterators
-	err       error
-	firstNext bool
-	closed    bool
-	pool      SeriesIteratorPool
+	id                   ident.ID
+	nsID                 ident.ID
+	start                time.Time
+	end                  time.Time
+	iters                iterators
+	multiReaderIterators []MultiReaderIterator
+	err                  error
+	firstNext            bool
+	closed               bool
+	pool                 SeriesIteratorPool
 }
 
 // NewSeriesIterator creates a new series iterator.
