@@ -21,6 +21,8 @@
 package xio
 
 import (
+	"time"
+
 	"github.com/m3db/m3db/ts"
 	"github.com/m3db/m3x/pool"
 )
@@ -36,7 +38,7 @@ func NewSegmentReaderPool(opts pool.ObjectPoolOptions) SegmentReaderPool {
 
 func (p *segmentReaderPool) Init() {
 	p.pool.Init(func() interface{} {
-		sr := NewSegmentReader(ts.Segment{}).(*segmentReader)
+		sr := NewSegmentReader(ts.Segment{}, time.Time{}, time.Time{}).(*segmentReader)
 		sr.pool = p
 		return sr
 	})

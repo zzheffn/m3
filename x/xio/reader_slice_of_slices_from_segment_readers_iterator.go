@@ -20,7 +20,10 @@
 
 package xio
 
-import "io"
+import (
+	"io"
+	"time"
+)
 
 type readerSliceOfSlicesIterator struct {
 	segments [][]SegmentReader
@@ -44,6 +47,14 @@ func (it *readerSliceOfSlicesIterator) Next() bool {
 	}
 	it.idx++
 	return true
+}
+
+func (it *readerSliceOfSlicesIterator) CurrentStart() time.Time {
+	return it.segments[it.arrayIdx()][0].Start()
+}
+
+func (it *readerSliceOfSlicesIterator) CurrentEnd() time.Time {
+	return it.segments[it.arrayIdx()][0].End()
 }
 
 func (it *readerSliceOfSlicesIterator) CurrentLen() int {

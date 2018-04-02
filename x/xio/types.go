@@ -22,9 +22,10 @@ package xio
 
 import (
 	"io"
+	"time"
 
-	"github.com/m3db/m3x/resource"
 	"github.com/m3db/m3db/ts"
+	"github.com/m3db/m3x/resource"
 )
 
 // ReaderSliceReader implements the io reader interface backed by a slice of readers
@@ -39,11 +40,15 @@ type SegmentReader interface {
 	io.Reader
 	resource.Finalizer
 
+	Start() time.Time
+
+	End() time.Time
+
 	// Segment gets the segment read by this reader
 	Segment() (ts.Segment, error)
 
 	// Reset resets the reader to read a new segment
-	Reset(segment ts.Segment)
+	Reset(segment ts.Segment, start, end time.Time)
 }
 
 // SegmentReaderPool provides a pool for segment readers
@@ -62,6 +67,10 @@ type SegmentReaderPool interface {
 type ReaderSliceOfSlicesIterator interface {
 	// Next moves to the next item
 	Next() bool
+
+	CurrentStart() time.Time
+
+	CurrentEnd() time.Time
 
 	// CurrentLen returns the current slice of readers
 	CurrentLen() int

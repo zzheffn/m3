@@ -23,6 +23,7 @@ package encoding
 import (
 	"errors"
 	"io"
+	"time"
 
 	"github.com/m3db/m3db/ts"
 	"github.com/m3db/m3db/x/xio"
@@ -52,7 +53,7 @@ func NewMultiReaderIterator(
 	pool MultiReaderIteratorPool,
 ) MultiReaderIterator {
 	it := &multiReaderIterator{pool: pool, iteratorAlloc: iteratorAlloc}
-	it.Reset(nil)
+	it.Reset(nil, time.Time{}, time.Time{})
 	return it
 }
 
@@ -155,10 +156,16 @@ func (it *multiReaderIterator) Err() error {
 	return it.err
 }
 
-func (it *multiReaderIterator) Reset(readers []io.Reader) {
+func (it *multiReaderIterator) Readers() xio.ReaderSliceOfSlicesIterator {
+	return it.slicesIter
+}
+
+func (it *multiReaderIterator) Reset(readers []io.Reader, start, end time.Time) {
 	it.singleSlicesIter.readers = readers
 	it.singleSlicesIter.firstNext = true
 	it.singleSlicesIter.closed = false
+	it.singleSlicesIter.start = start
+	it.singleSlicesIter.end = end
 	it.ResetSliceOfSlices(&it.singleSlicesIter)
 }
 
@@ -191,6 +198,8 @@ type singleSlicesOfSlicesIterator struct {
 	readers   []io.Reader
 	firstNext bool
 	closed    bool
+	start     time.Time
+	end       time.Time
 }
 
 func (it *singleSlicesOfSlicesIterator) Next() bool {
@@ -199,6 +208,14 @@ func (it *singleSlicesOfSlicesIterator) Next() bool {
 	}
 	it.firstNext = false
 	return true
+}
+
+func (it *singleSlicesOfSlicesIterator) CurrentStart() time.Time {
+	return it.start
+}
+
+func (it *singleSlicesOfSlicesIterator) CurrentEnd() time.Time {
+	return it.end
 }
 
 func (it *singleSlicesOfSlicesIterator) CurrentLen() int {

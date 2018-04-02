@@ -22,6 +22,7 @@ package xio
 
 import (
 	"io"
+	"time"
 
 	"github.com/m3db/m3db/ts"
 )
@@ -58,13 +59,23 @@ func (r *sliceOfSliceReader) Read(b []byte) (int, error) {
 }
 
 type readerSliceReader struct {
-	s  []io.Reader // reader list
-	si int         // slice index
+	s     []io.Reader // reader list
+	si    int         // slice index
+	start time.Time
+	end   time.Time
 }
 
 // NewReaderSliceReader creates a new ReaderSliceReader instance.
-func NewReaderSliceReader(r []io.Reader) ReaderSliceReader {
-	return &readerSliceReader{s: r}
+func NewReaderSliceReader(r []io.Reader, start, end time.Time) ReaderSliceReader {
+	return &readerSliceReader{s: r, start: start, end: end}
+}
+
+func (r *readerSliceReader) Start() time.Time {
+	return r.start
+}
+
+func (r *readerSliceReader) End() time.Time {
+	return r.end
 }
 
 func (r *readerSliceReader) Read(b []byte) (int, error) {
@@ -100,11 +111,21 @@ type segmentReader struct {
 	segment ts.Segment
 	si      int
 	pool    SegmentReaderPool
+	start   time.Time
+	end     time.Time
 }
 
 // NewSegmentReader creates a new segment reader along with a specified segment.
-func NewSegmentReader(segment ts.Segment) SegmentReader {
-	return &segmentReader{segment: segment}
+func NewSegmentReader(segment ts.Segment, start, end time.Time) SegmentReader {
+	return &segmentReader{segment: segment, start: start, end: end}
+}
+
+func (r *segmentReader) Start() time.Time {
+	return r.start
+}
+
+func (r *segmentReader) End() time.Time {
+	return r.end
 }
 
 func (sr *segmentReader) Read(b []byte) (int, error) {
@@ -146,9 +167,11 @@ func (sr *segmentReader) Segment() (ts.Segment, error) {
 	return sr.segment, nil
 }
 
-func (sr *segmentReader) Reset(segment ts.Segment) {
+func (sr *segmentReader) Reset(segment ts.Segment, start, end time.Time) {
 	sr.segment = segment
 	sr.si = 0
+	sr.start = start
+	sr.end = end
 }
 
 func (sr *segmentReader) Finalize() {
