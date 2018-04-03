@@ -29,7 +29,6 @@ import (
 
 	"github.com/m3db/m3db/encoding"
 	"github.com/m3db/m3db/ts"
-	"github.com/m3db/m3db/x/xio"
 	"github.com/m3db/m3x/checked"
 	xtime "github.com/m3db/m3x/time"
 )
@@ -519,20 +518,11 @@ func (enc *encoder) reset(start time.Time, bytes checked.Bytes) {
 	enc.closed = false
 }
 
-func (enc *encoder) Stream() xio.SegmentReader {
-	segment := enc.segment(byCopyResultType)
-	if segment.Len() == 0 {
-		return nil
-	}
-	if readerPool := enc.opts.SegmentReaderPool(); readerPool != nil {
-		reader := readerPool.Get()
-		reader.Reset(segment)
-		return reader
-	}
-	return xio.NewSegmentReader(segment)
+func (enc *encoder) Segment() ts.Segment {
+	return enc.segment(byCopyResultType)
 }
 
-func (enc *encoder) StreamLen() int {
+func (enc *encoder) Len() int {
 	return enc.os.Len()
 }
 

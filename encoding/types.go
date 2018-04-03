@@ -37,11 +37,11 @@ type Encoder interface {
 	// Encode encodes a datapoint and optionally an annotation.
 	Encode(dp ts.Datapoint, unit xtime.Unit, annotation ts.Annotation) error
 
-	// Stream is the streaming interface for reading encoded bytes in the encoder.
-	Stream() xio.SegmentReader
+	// Segment returns a copied segment comprising of the encoder data.
+	Segment() ts.Segment
 
-	// StreamLen returns the length of the encoded bytes in the encoder.
-	StreamLen() int
+	// Len returns the length of the encoded bytes in the encoder.
+	Len() int
 
 	// Reset resets the start time of the encoder and the internal state.
 	Reset(t time.Time, capacity int)
@@ -135,7 +135,7 @@ type MultiReaderIterator interface {
 	Iterator
 
 	// Reset resets the iterator to read from a slice of readers.
-	Reset(readers []io.Reader, start, end time.Time)
+	Reset(readers []xio.Reader, start, end time.Time)
 
 	// Reset resets the iterator to read from a slice of slice readers.
 	ResetSliceOfSlices(readers xio.ReaderSliceOfSlicesIterator)

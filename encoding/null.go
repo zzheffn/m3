@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/m3db/m3db/ts"
-	"github.com/m3db/m3db/x/xio"
 	xtime "github.com/m3db/m3x/time"
 )
 
@@ -42,10 +41,10 @@ func NewNullEncoder() Encoder {
 func (e *nullEncoder) Encode(dp ts.Datapoint, timeUnit xtime.Unit, annotation ts.Annotation) error {
 	return nil
 }
-func (e *nullEncoder) Stream() xio.SegmentReader {
-	return xio.NewSegmentReader(ts.Segment{})
+func (e *nullEncoder) Segment() ts.Segment {
+	return ts.Segment{}
 }
-func (e *nullEncoder) StreamLen() int                                    { return 0 }
+func (e *nullEncoder) Len() int                                          { return 0 }
 func (e *nullEncoder) Seal()                                             { e.sealed = true }
 func (e *nullEncoder) Reset(t time.Time, capacity int)                   {}
 func (e *nullEncoder) Close()                                            {}

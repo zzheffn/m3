@@ -22,7 +22,6 @@ package encoding
 
 import (
 	"errors"
-	"io"
 	"time"
 
 	"github.com/m3db/m3db/ts"
@@ -160,7 +159,7 @@ func (it *multiReaderIterator) Readers() xio.ReaderSliceOfSlicesIterator {
 	return it.slicesIter
 }
 
-func (it *multiReaderIterator) Reset(readers []io.Reader, start, end time.Time) {
+func (it *multiReaderIterator) Reset(readers []xio.Reader, start, end time.Time) {
 	it.singleSlicesIter.readers = readers
 	it.singleSlicesIter.firstNext = true
 	it.singleSlicesIter.closed = false
@@ -195,7 +194,7 @@ func (it *multiReaderIterator) Close() {
 }
 
 type singleSlicesOfSlicesIterator struct {
-	readers   []io.Reader
+	readers   []xio.Reader
 	firstNext bool
 	closed    bool
 	start     time.Time
@@ -222,7 +221,7 @@ func (it *singleSlicesOfSlicesIterator) CurrentLen() int {
 	return len(it.readers)
 }
 
-func (it *singleSlicesOfSlicesIterator) CurrentAt(idx int) io.Reader {
+func (it *singleSlicesOfSlicesIterator) CurrentAt(idx int) xio.Reader {
 	return it.readers[idx]
 }
 

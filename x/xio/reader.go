@@ -27,86 +27,6 @@ import (
 	"github.com/m3db/m3db/ts"
 )
 
-type sliceOfSliceReader struct {
-	s  [][]byte // raw data
-	si int      // current slice index
-	bi int      // current byte index
-}
-
-// NewSliceOfSliceReader creates a new io reader that wraps a slice of slice inside itself.
-func NewSliceOfSliceReader(rawBytes [][]byte) io.Reader {
-	return &sliceOfSliceReader{s: rawBytes}
-}
-
-func (r *sliceOfSliceReader) Read(b []byte) (int, error) {
-	if len(b) == 0 {
-		return 0, nil
-	}
-	if r.si >= len(r.s) {
-		return 0, io.EOF
-	}
-	n := 0
-	for r.si < len(r.s) && n < len(b) {
-		nRead := copy(b[n:], r.s[r.si][r.bi:])
-		n += nRead
-		r.bi += nRead
-		if r.bi >= len(r.s[r.si]) {
-			r.si++
-			r.bi = 0
-		}
-	}
-	return n, nil
-}
-
-type readerSliceReader struct {
-	s     []io.Reader // reader list
-	si    int         // slice index
-	start time.Time
-	end   time.Time
-}
-
-// NewReaderSliceReader creates a new ReaderSliceReader instance.
-func NewReaderSliceReader(r []io.Reader, start, end time.Time) ReaderSliceReader {
-	return &readerSliceReader{s: r, start: start, end: end}
-}
-
-func (r *readerSliceReader) Start() time.Time {
-	return r.start
-}
-
-func (r *readerSliceReader) End() time.Time {
-	return r.end
-}
-
-func (r *readerSliceReader) Read(b []byte) (int, error) {
-	if len(b) == 0 {
-		return 0, nil
-	}
-	if r.si >= len(r.s) {
-		return 0, io.EOF
-	}
-	n := 0
-	for r.si < len(r.s) && n < len(b) {
-		if r.s[r.si] == nil {
-			r.si++
-			continue
-		}
-		nRead, _ := r.s[r.si].Read(b[n:])
-		n += nRead
-		if n < len(b) {
-			r.si++
-		}
-	}
-	if n == 0 {
-		return 0, io.EOF
-	}
-	return n, nil
-}
-
-func (r *readerSliceReader) Readers() []io.Reader {
-	return r.s
-}
-
 type segmentReader struct {
 	segment ts.Segment
 	si      int
@@ -118,6 +38,10 @@ type segmentReader struct {
 // NewSegmentReader creates a new segment reader along with a specified segment.
 func NewSegmentReader(segment ts.Segment, start, end time.Time) SegmentReader {
 	return &segmentReader{segment: segment, start: start, end: end}
+}
+
+func (sr *segmentReader) Clone() Reader {
+	return NewSegmentReader(sr.segment, sr.start, sr.end)
 }
 
 func (r *segmentReader) Start() time.Time {

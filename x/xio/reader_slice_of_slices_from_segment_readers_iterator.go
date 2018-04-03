@@ -21,7 +21,6 @@
 package xio
 
 import (
-	"io"
 	"time"
 )
 
@@ -61,7 +60,7 @@ func (it *readerSliceOfSlicesIterator) CurrentLen() int {
 	return len(it.segments[it.arrayIdx()])
 }
 
-func (it *readerSliceOfSlicesIterator) CurrentAt(idx int) io.Reader {
+func (it *readerSliceOfSlicesIterator) CurrentAt(idx int) Reader {
 	return it.segments[it.arrayIdx()][idx]
 }
 
