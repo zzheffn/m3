@@ -282,7 +282,7 @@ func (s *commitLogSource) Read(
 	unmerged := make([]encodersAndRanges, numShards)
 	for shard := range shardsTimeRanges {
 		unmerged[shard] = encodersAndRanges{
-			encodersBySeries: make(map[uint64]encodersByTime),
+			encodersBySeries: make(map[xtime.UnixNano]map[ident.Hash]encodersAndID),
 			ranges:           shardsTimeRanges[shard],
 		}
 	}
@@ -579,24 +579,31 @@ func (s *commitLogSource) startM3TSZEncodingWorker(
 		)
 
 		unmergedShard := unmerged[series.Shard].encodersBySeries
-		unmergedSeries, ok := unmergedShard[series.UniqueIndex]
+		unmergedShardBlock, ok := unmergedShard[xtime.ToUnixNano(blockStart)]
 		if !ok {
-			unmergedSeries = encodersByTime{
+			unmergedShardBlock = make(map[ident.Hash]encodersAndID)
+			unmergedShard[xtime.ToUnixNano(blockStart)] = unmergedShardBlock
+		}
+
+		hash := series.ID.Hash()
+		unmergedSeriesBlock, ok := unmergedShardBlock[hash]
+		if !ok {
+			unmergedSeriesBlock = encodersAndID{
 				id:       series.ID,
-				encoders: make(map[xtime.UnixNano]encoders)}
-			unmergedShard[series.UniqueIndex] = unmergedSeries
+				encoders: nil,
+			}
+			unmergedShardBlock[hash] = unmergedSeriesBlock
 		}
 
 		var (
 			err            error
 			blockStartNano = xtime.ToUnixNano(blockStart)
-			unmergedBlock  = unmergedSeries.encoders[blockStartNano]
 			wroteExisting  = false
 		)
-		for i := range unmergedBlock {
-			if unmergedBlock[i].lastWriteAt.Before(dp.Timestamp) {
-				unmergedBlock[i].lastWriteAt = dp.Timestamp
-				err = unmergedBlock[i].enc.Encode(dp, unit, annotation)
+		for i := range unmergedSeriesBlock.encoders {
+			if unmergedSeriesBlock.encoders[i].lastWriteAt.Before(dp.Timestamp) {
+				unmergedSeriesBlock.encoders[i].lastWriteAt = dp.Timestamp
+				err = unmergedSeriesBlock.encoders[i].enc.Encode(dp, unit, annotation)
 				wroteExisting = true
 				break
 			}
@@ -607,11 +614,10 @@ func (s *commitLogSource) startM3TSZEncodingWorker(
 
 			err = enc.Encode(dp, unit, annotation)
 			if err == nil {
-				unmergedBlock = append(unmergedBlock, encoder{
+				unmergedSeriesBlock.encoders = append(unmergedSeriesBlock.encoders, encoder{
 					lastWriteAt: dp.Timestamp,
 					enc:         enc,
 				})
-				unmergedSeries.encoders[blockStartNano] = unmergedBlock
 			}
 		}
 		if err != nil {
@@ -876,13 +882,13 @@ func newReadSeriesPredicate(ns namespace.Metadata) commitlog.SeriesFilterPredica
 }
 
 type encodersAndRanges struct {
-	encodersBySeries map[uint64]encodersByTime
+	encodersBySeries map[xtime.UnixNano]map[ident.Hash]encodersAndID
 	ranges           xtime.Ranges
 }
 
-type encodersByTime struct {
+type encodersAndID struct {
 	id       ident.ID
-	encoders map[xtime.UnixNano]encoders
+	encoders encoders
 }
 
 // encoderArg contains all the information a worker go-routine needs to encode
