@@ -162,20 +162,20 @@ func (s *commitLogSource) Read(
 	}
 
 	var (
-		bopts                = s.opts.ResultOptions()
-		bytesPool            = bopts.DatabaseBlockOptions().BytesPool()
-		blocksPool           = bopts.DatabaseBlockOptions().DatabaseBlockPool()
-		blockSize            = ns.Options().RetentionOptions().BlockSize()
-		snapshotShardResults = make(map[uint32]result.ShardResult)
+		bopts = s.opts.ResultOptions()
+		// bytesPool  = bopts.DatabaseBlockOptions().BytesPool()
+		// blocksPool = bopts.DatabaseBlockOptions().DatabaseBlockPool()
+		blockSize = ns.Options().RetentionOptions().BlockSize()
+		// snapshotShardResults = make(map[uint32]result.ShardResult)
 	)
 
 	// Start off by bootstrapping the most recent and complete snapshot file for each shard for each of the
 	// blocks.
-	snapshotShardResults, err := s.bootstrapAvailableSnapshotFiles(
-		ns.ID(), shardsTimeRanges, blockSize, snapshotFilesByShard, fsOpts, bytesPool, blocksPool)
-	if err != nil {
-		return nil, err
-	}
+	// snapshotShardResults, err := s.bootstrapAvailableSnapshotFiles(
+	// 	ns.ID(), shardsTimeRanges, blockSize, snapshotFilesByShard, fsOpts, bytesPool, blocksPool)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	// At this point we've bootstrapped all the snapshot files that we can, and we need
 	// to decide which commitlogs to read. In order to do that, we'll need to figure out the
@@ -341,28 +341,29 @@ func (s *commitLogSource) Read(
 	wg.Wait()
 	s.logEncodingOutcome(workerErrs, iter)
 
-	commitLogBootstrapResult := s.mergeShards(int(numShards), bopts, blopts, encoderPool, unmerged, snapshotShardResults)
+	commitLogBootstrapResult := s.mergeShards(
+		ns, int(numShards), shardsTimeRanges, fsOpts, bopts, blopts, encoderPool, unmerged, snapshotFilesByShard)
 
-	commitLogShardResults := commitLogBootstrapResult.ShardResults()
-	for shard, shardResult := range snapshotShardResults {
-		existingShardResult, ok := commitLogShardResults[shard]
-		if !ok {
-			commitLogBootstrapResult.Add(shard, shardResult, xtime.Ranges{})
-			continue
-		}
+	// commitLogShardResults := commitLogBootstrapResult.ShardResults()
+	// for shard, shardResult := range snapshotShardResults {
+	// 	existingShardResult, ok := commitLogShardResults[shard]
+	// 	if !ok {
+	// 		commitLogBootstrapResult.Add(shard, shardResult, xtime.Ranges{})
+	// 		continue
+	// 	}
 
-		for _, series := range shardResult.AllSeries() {
-			for blockStart, dbBlock := range series.Blocks.AllBlocks() {
-				existingBlock, ok := existingShardResult.BlockAt(series.ID, blockStart.ToTime())
-				if !ok {
-					existingShardResult.AddBlock(series.ID, dbBlock)
-					continue
-				}
+	// 	for _, series := range shardResult.AllSeries() {
+	// 		for blockStart, dbBlock := range series.Blocks.AllBlocks() {
+	// 			existingBlock, ok := existingShardResult.BlockAt(series.ID, blockStart.ToTime())
+	// 			if !ok {
+	// 				existingShardResult.AddBlock(series.ID, dbBlock)
+	// 				continue
+	// 			}
 
-				existingBlock.Merge(dbBlock)
-			}
-		}
-	}
+	// 			existingBlock.Merge(dbBlock)
+	// 		}
+	// 	}
+	// }
 
 	return commitLogBootstrapResult, nil
 }
@@ -567,6 +568,27 @@ type dataAndID struct {
 	id   ident.ID
 }
 
+func (s *commitLogSource) bootstrapLatestValidSnapshotFile(
+	nsID ident.ID,
+	shard uint32,
+	blockStart time.Time,
+	snapshotFilesByShard map[uint32]fs.SnapshotFilesSlice,
+	fsOpts fs.Options,
+	bytesPool pool.CheckedBytesPool,
+	blocksPool block.DatabaseBlockPool,
+) (map[ident.Hash]dataAndID, error) {
+	snapshotFiles := snapshotFilesByShard[shard]
+
+	latestSnapshot, ok := snapshotFiles.LatestValidForBlock(blockStart)
+	if !ok {
+		// TODO: Error handling here?
+		return nil, nil
+	}
+
+	return s.bootstrapSnapshotFile(nsID, shard, blockStart, latestSnapshot.ID.Index,
+		fsOpts, bytesPool, blocksPool)
+}
+
 func (s *commitLogSource) bootstrapSnapshotFile(
 	nsID ident.ID,
 	shard uint32,
@@ -719,19 +741,20 @@ func (s *commitLogSource) shouldEncodeSeries(
 }
 
 func (s *commitLogSource) mergeShards(
+	ns namespace.Metadata,
 	numShards int,
+	shardsTimeRanges result.ShardTimeRanges,
+	fsOpts fs.Options,
 	bopts result.Options,
 	blopts block.Options,
 	encoderPool encoding.EncoderPool,
 	unmerged []encodersAndRanges,
-	snapshotShardResults map[uint32]result.ShardResult,
+	snapshotFilesByShard map[uint32]fs.SnapshotFilesSlice,
 ) result.BootstrapResult {
 	var (
-		shardErrs               = make([]int, numShards)
-		shardEmptyErrs          = make([]int, numShards)
-		bootstrapResult         = result.NewBootstrapResult()
-		blocksPool              = bopts.DatabaseBlockOptions().DatabaseBlockPool()
-		multiReaderIteratorPool = blopts.MultiReaderIteratorPool()
+		shardErrs       = make([]int, numShards)
+		shardEmptyErrs  = make([]int, numShards)
+		bootstrapResult = result.NewBootstrapResult()
 		// Controls how many shards can be merged in parallel
 		workerPool          = xsync.NewWorkerPool(s.opts.MergeShardsConcurrency())
 		bootstrapResultLock sync.Mutex
@@ -749,7 +772,7 @@ func (s *commitLogSource) mergeShards(
 		mergeShardFunc := func() {
 			var shardResult result.ShardResult
 			shardResult, shardEmptyErrs[shard], shardErrs[shard] = s.mergeShard(
-				unmergedShard, blocksPool, multiReaderIteratorPool, encoderPool, blopts)
+				ns, uint32(shard), shardsTimeRanges[uint32(shard)], snapshotFilesByShard, unmergedShard, fsOpts, bopts, blopts)
 			if shardResult != nil && len(shardResult.AllSeries()) > 0 {
 				// Prevent race conditions while updating bootstrapResult from multiple go-routines
 				bootstrapResultLock.Lock()
@@ -769,44 +792,141 @@ func (s *commitLogSource) mergeShards(
 }
 
 func (s *commitLogSource) mergeShard(
+	ns namespace.Metadata,
+	shard uint32,
+	shardTimeRanges xtime.Ranges,
+	snapshotFilesByShard map[uint32]fs.SnapshotFilesSlice,
 	unmergedShard encodersAndRanges,
-	blocksPool block.DatabaseBlockPool,
-	multiReaderIteratorPool encoding.MultiReaderIteratorPool,
-	encoderPool encoding.EncoderPool,
+	fsOpts fs.Options,
+	bopts result.Options,
 	blopts block.Options,
 ) (result.ShardResult, int, int) {
 	var shardResult result.ShardResult
 	var numShardEmptyErrs int
 	var numErrs int
 
-	for blockStart, unmergedSeriesBlocks := range unmergedShard.encodersBySeries {
-		for _, encodersAndID := range unmergedSeriesBlocks {
-			dbbBlock, numSeriesEmptyErrs, numSeriesErrs := s.mergeSeries(
-				blockStart.ToTime(),
-				encodersAndID,
-				blocksPool,
-				multiReaderIteratorPool,
-				encoderPool,
-				blopts,
-			)
+	var (
+		blockSize               = ns.Options().RetentionOptions().BlockSize()
+		bytesPool               = bopts.DatabaseBlockOptions().BytesPool()
+		blocksPool              = bopts.DatabaseBlockOptions().DatabaseBlockPool()
+		encoderPool             = bopts.DatabaseBlockOptions().EncoderPool()
+		multiReaderIteratorPool = blopts.MultiReaderIteratorPool()
+	)
 
-			if dbbBlock != nil {
-				if shardResult == nil {
-					shardResult = result.NewShardResult(len(unmergedShard.encodersBySeries), s.opts.ResultOptions())
+	rangeIter := shardTimeRanges.Iter()
+	for hasMore := rangeIter.Next(); hasMore; hasMore = rangeIter.Next() {
+		currRange := rangeIter.Value()
+
+		currRangeDuration := currRange.End.Unix() - currRange.Start.Unix()
+		isMultipleOfBlockSize := currRangeDuration/int64(blockSize) == 0
+		if !isMultipleOfBlockSize {
+			// TODO: Fix me
+			panic("NOT MULTIPLE")
+			// return nil, fmt.Errorf(
+			// 	"received bootstrap range that is not multiple of blocksize, blockSize: %d, start: %d, end: %d",
+			// 	blockSize, currRange.End.Unix(), currRange.Start.Unix())
+		}
+
+		for blockStart := currRange.Start.Truncate(blockSize); blockStart.Before(currRange.End); blockStart = blockStart.Add(blockSize) {
+			unmergedSeriesBlocks := unmergedShard.encodersBySeries[xtime.ToUnixNano(blockStart)]
+			snapshotData, err := s.bootstrapLatestValidSnapshotFile(
+				ns.ID(), shard, blockStart, snapshotFilesByShard, fsOpts, bytesPool, blocksPool)
+			if err != nil {
+				// TODO: Handle err
+				panic(err)
+			}
+			for hash, encodersAndID := range unmergedSeriesBlocks {
+				dbbBlock, numSeriesEmptyErrs, numSeriesErrs := s.mergeSeries(
+					blockStart,
+					encodersAndID,
+					snapshotData[hash].data,
+					blocksPool,
+					multiReaderIteratorPool,
+					encoderPool,
+					blopts,
+				)
+
+				if dbbBlock != nil {
+					if shardResult == nil {
+						shardResult = result.NewShardResult(len(unmergedShard.encodersBySeries), s.opts.ResultOptions())
+					}
+					shardResult.AddBlock(encodersAndID.id, dbbBlock)
 				}
-				shardResult.AddBlock(encodersAndID.id, dbbBlock)
+
+				numShardEmptyErrs += numSeriesEmptyErrs
+				numErrs += numSeriesErrs
 			}
 
-			numShardEmptyErrs += numSeriesEmptyErrs
-			numErrs += numSeriesErrs
+			for hash, data := range snapshotData {
+				_, ok := unmergedSeriesBlocks[hash]
+				if ok {
+					// We already merged this data in
+					continue
+				}
+
+				// This data did not have an equivalent in the commitlog so it wasn't
+				// merger prior
+				if shardResult == nil {
+					// TODO: FIx this and the other one to set the size based on the length of both
+					shardResult = result.NewShardResult(len(snapshotData), s.opts.ResultOptions())
+				}
+				pooledBlock := blocksPool.Get()
+				pooledBlock.Reset(blockStart, ts.NewSegment(data.data, nil, ts.FinalizeHead))
+				shardResult.AddBlock(data.id, pooledBlock)
+			}
 		}
 	}
+
+	// for blockStart, unmergedSeriesBlocks := range unmergedShard.encodersBySeries {
+	// 	snapshotData, err := s.bootstrapLatestValidSnapshotFile(
+	// 		ns.ID(), shard, blockStart.ToTime(), snapshotFilesByShard, fsOpts, bytesPool, blocksPool)
+	// 	if err != nil {
+	// 		// TODO: Handle err
+	// 		panic(err)
+	// 	}
+	// 	for hash, encodersAndID := range unmergedSeriesBlocks {
+	// 		dbbBlock, numSeriesEmptyErrs, numSeriesErrs := s.mergeSeries(
+	// 			blockStart.ToTime(),
+	// 			encodersAndID,
+	// 			snapshotData[hash].data,
+	// 			blocksPool,
+	// 			multiReaderIteratorPool,
+	// 			encoderPool,
+	// 			blopts,
+	// 		)
+
+	// 		if dbbBlock != nil {
+	// 			if shardResult == nil {
+	// 				shardResult = result.NewShardResult(len(unmergedShard.encodersBySeries), s.opts.ResultOptions())
+	// 			}
+	// 			shardResult.AddBlock(encodersAndID.id, dbbBlock)
+	// 		}
+
+	// 		numShardEmptyErrs += numSeriesEmptyErrs
+	// 		numErrs += numSeriesErrs
+	// 	}
+
+	// 	for hash, data := range snapshotData {
+	// 		_, ok := unmergedSeriesBlocks[hash]
+	// 		if ok {
+	// 			// We already merged this data in
+	// 			continue
+	// 		}
+
+	// 		// This data did not have an equivalent in the commitlog so it wasn't
+	// 		// merger prior
+	// 		pooledBlock := blocksPool.Get()
+	// 		pooledBlock.Reset(blockStart.ToTime(), ts.NewSegment(data.data, nil, ts.FinalizeHead))
+	// 		shardResult.AddBlock(data.id, pooledBlock)
+	// 	}
+	// }
 	return shardResult, numShardEmptyErrs, numErrs
 }
 
 func (s *commitLogSource) mergeSeries(
 	start time.Time,
 	unmergedEncoders encodersAndID,
+	snapshotData checked.Bytes,
 	blocksPool block.DatabaseBlockPool,
 	multiReaderIteratorPool encoding.MultiReaderIteratorPool,
 	encoderPool encoding.EncoderPool,
@@ -816,19 +936,26 @@ func (s *commitLogSource) mergeSeries(
 	var numErrs int
 
 	encoders := unmergedEncoders.encoders
-	if len(encoders) == 0 {
-		numEmptyErrs++
-		return nil, numEmptyErrs, numErrs
-	}
 
-	if len(encoders) == 1 {
-		pooledBlock := blocksPool.Get()
-		pooledBlock.Reset(start, encoders[0].enc.Discard())
-		return pooledBlock, numEmptyErrs, numErrs
-	}
+	// TODO: Perhaps re-instate these optimizations?
+	// if len(encoders) == 0 {
+	// 	numEmptyErrs++
+	// 	return nil, numEmptyErrs, numErrs
+	// }
+
+	// if len(encoders) == 1 {
+	// 	pooledBlock := blocksPool.Get()
+	// 	pooledBlock.Reset(start, encoders[0].enc.Discard())
+	// 	return pooledBlock, numEmptyErrs, numErrs
+	// }
 
 	// Convert encoders to readers so we can use iteration helpers
 	readers := encoders.newReaders()
+	if snapshotData != nil {
+		// TODO: Pooling?
+		seg := ts.NewSegment(snapshotData, nil, ts.FinalizeHead)
+		readers = append(readers, xio.NewSegmentReader(seg))
+	}
 	iter := multiReaderIteratorPool.Get()
 	iter.Reset(readers)
 
