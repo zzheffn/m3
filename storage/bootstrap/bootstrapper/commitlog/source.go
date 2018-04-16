@@ -38,6 +38,7 @@ import (
 	"github.com/m3db/m3db/storage/namespace"
 	"github.com/m3db/m3db/ts"
 	"github.com/m3db/m3db/x/xio"
+	"github.com/m3db/m3x/checked"
 	"github.com/m3db/m3x/ident"
 	xlog "github.com/m3db/m3x/log"
 	"github.com/m3db/m3x/pool"
@@ -558,6 +559,66 @@ func (s *commitLogSource) bootstrapAvailableSnapshotFiles(
 	}
 
 	return snapshotShardResults, nil
+}
+
+// TODO: Move me
+type dataAndID struct {
+	data checked.Bytes
+	id   ident.ID
+}
+
+func (s *commitLogSource) bootstrapSnapshotFile(
+	nsID ident.ID,
+	shard uint32,
+	blockStart time.Time,
+	index int,
+	fsOpts fs.Options,
+	bytesPool pool.CheckedBytesPool,
+	blocksPool block.DatabaseBlockPool,
+) (map[ident.Hash]dataAndID, error) {
+	reader, err := s.newReaderFn(bytesPool, fsOpts)
+	if err != nil {
+		// TODO: In this case we want to emit an error log, and somehow propagate that
+		// we were unable to read this snapshot file to the subsequent code which determines
+		// how much commitlog to read. We might even want to try and read the next earliest
+		// file if it exists.
+		// Actually since the commit log file no longer exists, we might just want to mark
+		// this as unfulfilled somehow and get on with it.
+		return nil, err
+	}
+	err = reader.Open(fs.ReaderOpenOptions{
+		Identifier: fs.FilesetFileIdentifier{
+			Namespace:  nsID,
+			BlockStart: blockStart,
+			Shard:      shard,
+			Index:      index,
+		},
+		FilesetType: persist.FilesetSnapshotType,
+	})
+	if err != nil {
+		// TODO: Same comment as above
+		return nil, err
+	}
+
+	result := make(map[ident.Hash]dataAndID)
+	for {
+		// TODO: Verify checksum?
+		id, data, _, err := reader.Read()
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+
+		if err == io.EOF {
+			break
+		}
+
+		result[id.Hash()] = dataAndID{
+			data: data,
+			id:   id,
+		}
+	}
+
+	return result, nil
 }
 
 func (s *commitLogSource) startM3TSZEncodingWorker(
