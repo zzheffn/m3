@@ -596,9 +596,8 @@ func (s *commitLogSource) startM3TSZEncodingWorker(
 		}
 
 		var (
-			err            error
-			blockStartNano = xtime.ToUnixNano(blockStart)
-			wroteExisting  = false
+			err           error
+			wroteExisting = false
 		)
 		for i := range unmergedSeriesBlock.encoders {
 			if unmergedSeriesBlock.encoders[i].lastWriteAt.Before(dp.Timestamp) {
@@ -618,6 +617,7 @@ func (s *commitLogSource) startM3TSZEncodingWorker(
 					lastWriteAt: dp.Timestamp,
 					enc:         enc,
 				})
+				unmergedShardBlock[hash] = unmergedSeriesBlock
 			}
 		}
 		if err != nil {
@@ -718,99 +718,92 @@ func (s *commitLogSource) mergeShard(
 	var numShardEmptyErrs int
 	var numErrs int
 
-	for _, unmergedBlocks := range unmergedShard.encodersBySeries {
-		seriesBlocks, numSeriesEmptyErrs, numSeriesErrs := s.mergeSeries(
-			unmergedBlocks,
-			blocksPool,
-			multiReaderIteratorPool,
-			encoderPool,
-			blopts,
-		)
+	for blockStart, unmergedSeriesBlocks := range unmergedShard.encodersBySeries {
+		for _, encodersAndID := range unmergedSeriesBlocks {
+			dbbBlock, numSeriesEmptyErrs, numSeriesErrs := s.mergeSeries(
+				blockStart.ToTime(),
+				encodersAndID,
+				blocksPool,
+				multiReaderIteratorPool,
+				encoderPool,
+				blopts,
+			)
 
-		if seriesBlocks != nil && seriesBlocks.Len() > 0 {
-			if shardResult == nil {
-				shardResult = result.NewShardResult(len(unmergedShard.encodersBySeries), s.opts.ResultOptions())
+			if dbbBlock != nil {
+				if shardResult == nil {
+					shardResult = result.NewShardResult(len(unmergedShard.encodersBySeries), s.opts.ResultOptions())
+				}
+				shardResult.AddBlock(encodersAndID.id, dbbBlock)
 			}
-			shardResult.AddSeries(unmergedBlocks.id, seriesBlocks)
-		}
 
-		numShardEmptyErrs += numSeriesEmptyErrs
-		numErrs += numSeriesErrs
+			numShardEmptyErrs += numSeriesEmptyErrs
+			numErrs += numSeriesErrs
+		}
 	}
 	return shardResult, numShardEmptyErrs, numErrs
 }
 
 func (s *commitLogSource) mergeSeries(
-	unmergedBlocks encodersByTime,
+	start time.Time,
+	unmergedEncoders encodersAndID,
 	blocksPool block.DatabaseBlockPool,
 	multiReaderIteratorPool encoding.MultiReaderIteratorPool,
 	encoderPool encoding.EncoderPool,
 	blopts block.Options,
-) (block.DatabaseSeriesBlocks, int, int) {
-	var seriesBlocks block.DatabaseSeriesBlocks
+) (block.DatabaseBlock, int, int) {
 	var numEmptyErrs int
 	var numErrs int
 
-	for startNano, encoders := range unmergedBlocks.encoders {
-		start := startNano.ToTime()
-
-		if len(encoders) == 0 {
-			numEmptyErrs++
-			continue
-		}
-
-		if len(encoders) == 1 {
-			pooledBlock := blocksPool.Get()
-			pooledBlock.Reset(start, encoders[0].enc.Discard())
-			if seriesBlocks == nil {
-				seriesBlocks = block.NewDatabaseSeriesBlocks(len(unmergedBlocks.encoders))
-			}
-			seriesBlocks.AddBlock(pooledBlock)
-			continue
-		}
-
-		// Convert encoders to readers so we can use iteration helpers
-		readers := encoders.newReaders()
-		iter := multiReaderIteratorPool.Get()
-		iter.Reset(readers)
-
-		var err error
-		enc := encoderPool.Get()
-		enc.Reset(start, blopts.DatabaseBlockAllocSize())
-		for iter.Next() {
-			dp, unit, annotation := iter.Current()
-			encodeErr := enc.Encode(dp, unit, annotation)
-			if encodeErr != nil {
-				err = encodeErr
-				numErrs++
-				break
-			}
-		}
-
-		if iterErr := iter.Err(); iterErr != nil {
-			if err == nil {
-				err = iter.Err()
-			}
-			numErrs++
-		}
-
-		// Automatically returns iter to the pool
-		iter.Close()
-		encoders.close()
-		readers.close()
-
-		if err != nil {
-			continue
-		}
-
-		pooledBlock := blocksPool.Get()
-		pooledBlock.Reset(start, enc.Discard())
-		if seriesBlocks == nil {
-			seriesBlocks = block.NewDatabaseSeriesBlocks(len(unmergedBlocks.encoders))
-		}
-		seriesBlocks.AddBlock(pooledBlock)
+	encoders := unmergedEncoders.encoders
+	if len(encoders) == 0 {
+		numEmptyErrs++
+		return nil, numEmptyErrs, numErrs
 	}
-	return seriesBlocks, numEmptyErrs, numErrs
+
+	if len(encoders) == 1 {
+		pooledBlock := blocksPool.Get()
+		pooledBlock.Reset(start, encoders[0].enc.Discard())
+		return pooledBlock, numEmptyErrs, numErrs
+	}
+
+	// Convert encoders to readers so we can use iteration helpers
+	readers := encoders.newReaders()
+	iter := multiReaderIteratorPool.Get()
+	iter.Reset(readers)
+
+	var err error
+	enc := encoderPool.Get()
+	enc.Reset(start, blopts.DatabaseBlockAllocSize())
+	for iter.Next() {
+		dp, unit, annotation := iter.Current()
+		encodeErr := enc.Encode(dp, unit, annotation)
+		if encodeErr != nil {
+			err = encodeErr
+			numErrs++
+			break
+		}
+	}
+
+	if iterErr := iter.Err(); iterErr != nil {
+		if err == nil {
+			err = iter.Err()
+		}
+		numErrs++
+	}
+
+	// Automatically returns iter to the pool
+	iter.Close()
+	encoders.close()
+	readers.close()
+
+	if err != nil {
+		// TODO: ?
+		panic(err)
+	}
+
+	pooledBlock := blocksPool.Get()
+	pooledBlock.Reset(start, enc.Discard())
+	return pooledBlock, numEmptyErrs, numErrs
 }
 
 func (s *commitLogSource) findHighestShard(shardsTimeRanges result.ShardTimeRanges) uint32 {
