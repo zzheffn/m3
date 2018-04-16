@@ -344,27 +344,6 @@ func (s *commitLogSource) Read(
 	commitLogBootstrapResult := s.mergeShards(
 		ns, int(numShards), shardsTimeRanges, fsOpts, bopts, blopts, encoderPool, unmerged, snapshotFilesByShard)
 
-	// commitLogShardResults := commitLogBootstrapResult.ShardResults()
-	// for shard, shardResult := range snapshotShardResults {
-	// 	existingShardResult, ok := commitLogShardResults[shard]
-	// 	if !ok {
-	// 		commitLogBootstrapResult.Add(shard, shardResult, xtime.Ranges{})
-	// 		continue
-	// 	}
-
-	// 	for _, series := range shardResult.AllSeries() {
-	// 		for blockStart, dbBlock := range series.Blocks.AllBlocks() {
-	// 			existingBlock, ok := existingShardResult.BlockAt(series.ID, blockStart.ToTime())
-	// 			if !ok {
-	// 				existingShardResult.AddBlock(series.ID, dbBlock)
-	// 				continue
-	// 			}
-
-	// 			existingBlock.Merge(dbBlock)
-	// 		}
-	// 	}
-	// }
-
 	return commitLogBootstrapResult, nil
 }
 
@@ -877,49 +856,6 @@ func (s *commitLogSource) mergeShard(
 		}
 	}
 
-	// for blockStart, unmergedSeriesBlocks := range unmergedShard.encodersBySeries {
-	// 	snapshotData, err := s.bootstrapLatestValidSnapshotFile(
-	// 		ns.ID(), shard, blockStart.ToTime(), snapshotFilesByShard, fsOpts, bytesPool, blocksPool)
-	// 	if err != nil {
-	// 		// TODO: Handle err
-	// 		panic(err)
-	// 	}
-	// 	for hash, encodersAndID := range unmergedSeriesBlocks {
-	// 		dbbBlock, numSeriesEmptyErrs, numSeriesErrs := s.mergeSeries(
-	// 			blockStart.ToTime(),
-	// 			encodersAndID,
-	// 			snapshotData[hash].data,
-	// 			blocksPool,
-	// 			multiReaderIteratorPool,
-	// 			encoderPool,
-	// 			blopts,
-	// 		)
-
-	// 		if dbbBlock != nil {
-	// 			if shardResult == nil {
-	// 				shardResult = result.NewShardResult(len(unmergedShard.encodersBySeries), s.opts.ResultOptions())
-	// 			}
-	// 			shardResult.AddBlock(encodersAndID.id, dbbBlock)
-	// 		}
-
-	// 		numShardEmptyErrs += numSeriesEmptyErrs
-	// 		numErrs += numSeriesErrs
-	// 	}
-
-	// 	for hash, data := range snapshotData {
-	// 		_, ok := unmergedSeriesBlocks[hash]
-	// 		if ok {
-	// 			// We already merged this data in
-	// 			continue
-	// 		}
-
-	// 		// This data did not have an equivalent in the commitlog so it wasn't
-	// 		// merger prior
-	// 		pooledBlock := blocksPool.Get()
-	// 		pooledBlock.Reset(blockStart.ToTime(), ts.NewSegment(data.data, nil, ts.FinalizeHead))
-	// 		shardResult.AddBlock(data.id, pooledBlock)
-	// 	}
-	// }
 	return shardResult, numShardEmptyErrs, numErrs
 }
 
@@ -936,18 +872,6 @@ func (s *commitLogSource) mergeSeries(
 	var numErrs int
 
 	encoders := unmergedEncoders.encoders
-
-	// TODO: Perhaps re-instate these optimizations?
-	// if len(encoders) == 0 {
-	// 	numEmptyErrs++
-	// 	return nil, numEmptyErrs, numErrs
-	// }
-
-	// if len(encoders) == 1 {
-	// 	pooledBlock := blocksPool.Get()
-	// 	pooledBlock.Reset(start, encoders[0].enc.Discard())
-	// 	return pooledBlock, numEmptyErrs, numErrs
-	// }
 
 	// Convert encoders to readers so we can use iteration helpers
 	readers := encoders.newReaders()
