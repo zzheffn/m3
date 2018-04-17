@@ -251,10 +251,12 @@ func (s *commitLogSource) Read(
 			}
 
 			if commitLogEntryRange.Overlaps(rangeToCheck) {
+				s.log.Infof("choosing to read commitlog with start: %d", commitLogFileStart.Unix())
 				return true
 			}
 		}
 
+		s.log.Infof("choosing to skip commitlog with start: %d", commitLogFileStart.Unix())
 		return false
 	}
 
@@ -311,6 +313,7 @@ func (s *commitLogSource) Read(
 		)
 	}
 
+	t1 := time.Now()
 	for iter.Next() {
 		// TODO: Can skip some datapoints here if they're captured in the snapshot
 		series, dp, unit, annotation := iter.Current()
@@ -334,6 +337,7 @@ func (s *commitLogSource) Read(
 			blockStart: dp.Timestamp.Truncate(blockSize),
 		}
 	}
+	s.log.Infof("took %v to read commitlogs", time.Now().Sub(t1))
 
 	for _, encoderChan := range encoderChans {
 		close(encoderChan)
@@ -343,8 +347,10 @@ func (s *commitLogSource) Read(
 	wg.Wait()
 	s.logEncodingOutcome(workerErrs, iter)
 
+	t1 = time.Now()
 	commitLogBootstrapResult := s.mergeShards(
 		ns, int(numShards), shardsTimeRanges, fsOpts, bopts, blopts, encoderPool, unmerged, snapshotFilesByShard)
+	s.log.Infof("took %v to merge shards", time.Now().Sub(t1))
 
 	return commitLogBootstrapResult, nil
 }

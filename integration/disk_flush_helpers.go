@@ -134,7 +134,7 @@ func verifyForTime(
 			filePathPrefix := storageOpts.CommitLogOptions().FilesystemOptions().FilePathPrefix()
 			snapshotFiles, err := fs.SnapshotFiles(filePathPrefix, namespace, shard)
 			require.NoError(t, err)
-			latest, ok := snapshotFiles.LatestForBlock(timestamp)
+			latest, ok := snapshotFiles.LatestValidForBlock(timestamp)
 			require.True(t, ok)
 			rOpts.Identifier.Index = latest.ID.Index
 		}
