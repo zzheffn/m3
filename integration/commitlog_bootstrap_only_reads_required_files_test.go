@@ -60,16 +60,6 @@ func TestCommitLogBootstrapOnlyReadsRequiredFiles(t *testing.T) {
 		SetFlushInterval(defaultIntegrationTestFlushInterval)
 	setup.storageOpts = setup.storageOpts.SetCommitLogOptions(commitLogOpts)
 
-	noOpAll := bootstrapper.NewNoOpAllBootstrapper()
-	bsOpts := newDefaulTestResultOptions(setup.storageOpts)
-	bclOpts := bcl.NewOptions().
-		SetResultOptions(bsOpts).
-		SetCommitLogOptions(commitLogOpts)
-	bs, err := bcl.NewCommitLogBootstrapper(bclOpts, noOpAll)
-	require.NoError(t, err)
-	process := bootstrap.NewProcess(bs, bsOpts)
-	setup.storageOpts = setup.storageOpts.SetBootstrapProcess(process)
-
 	log := setup.storageOpts.InstrumentOptions().Logger()
 	log.Info("commit log bootstrap test")
 
@@ -101,6 +91,20 @@ func TestCommitLogBootstrapOnlyReadsRequiredFiles(t *testing.T) {
 	log.Info("finished writing data to commitlog file with out of range timestamp")
 
 	setup.setNowFn(now)
+
+	noOpAll := bootstrapper.NewNoOpAllBootstrapper()
+	bsOpts := newDefaulTestResultOptions(setup.storageOpts)
+	bclOpts := bcl.NewOptions().
+		SetResultOptions(bsOpts).
+		SetCommitLogOptions(commitLogOpts)
+
+	inspection, err := bcl.InspectFilesystem(commitLogOpts.FilesystemOptions())
+	require.NoError(t, err)
+	bs, err := bcl.NewCommitLogBootstrapper(bclOpts, inspection, noOpAll)
+	require.NoError(t, err)
+	process := bootstrap.NewProcess(bs, bsOpts)
+	setup.storageOpts = setup.storageOpts.SetBootstrapProcess(process)
+
 	// Start the server with filesystem bootstrapper
 	require.NoError(t, setup.startServer())
 	log.Debug("server is now up")

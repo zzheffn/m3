@@ -27,11 +27,11 @@ import (
 	"time"
 
 	"github.com/m3db/m3db/integration/generate"
+	"github.com/m3db/m3db/persist/fs"
 	"github.com/m3db/m3db/retention"
 	"github.com/m3db/m3db/storage/bootstrap"
 	"github.com/m3db/m3db/storage/bootstrap/bootstrapper"
 	bcl "github.com/m3db/m3db/storage/bootstrap/bootstrapper/commitlog"
-	"github.com/m3db/m3db/storage/bootstrap/bootstrapper/fs"
 	"github.com/m3db/m3db/storage/namespace"
 	xtime "github.com/m3db/m3x/time"
 
@@ -83,26 +83,6 @@ func TestCommitLogAndFSMergeBootstrap(t *testing.T) {
 		SetFlushInterval(defaultIntegrationTestFlushInterval)
 	setup.storageOpts = setup.storageOpts.SetCommitLogOptions(commitLogOpts)
 
-	// commit log bootstrapper
-	noOpAll := bootstrapper.NewNoOpAllBootstrapper()
-	bsOpts := newDefaulTestResultOptions(setup.storageOpts)
-	bclOpts := bcl.NewOptions().
-		SetResultOptions(bsOpts).
-		SetCommitLogOptions(commitLogOpts)
-	commitLogBootstrapper, err := bcl.NewCommitLogBootstrapper(bclOpts, noOpAll)
-	require.NoError(t, err)
-	// fs bootstrapper
-	fsOpts := setup.storageOpts.CommitLogOptions().FilesystemOptions()
-	filePathPrefix := fsOpts.FilePathPrefix()
-	bfsOpts := fs.NewOptions().
-		SetResultOptions(bsOpts).
-		SetFilesystemOptions(fsOpts).
-		SetDatabaseBlockRetrieverManager(setup.storageOpts.DatabaseBlockRetrieverManager())
-	fsBootstrapper := fs.NewFileSystemBootstrapper(filePathPrefix, bfsOpts, commitLogBootstrapper)
-	// bootstrapper storage opts
-	process := bootstrap.NewProcess(fsBootstrapper, bsOpts)
-	setup.storageOpts = setup.storageOpts.SetBootstrapProcess(process)
-
 	log := setup.storageOpts.InstrumentOptions().Logger()
 	log.Info("commit log + fs merge bootstrap test")
 
@@ -141,6 +121,30 @@ func TestCommitLogAndFSMergeBootstrap(t *testing.T) {
 
 	log.Info("moving time forward and starting server")
 	setup.setNowFn(t3)
+
+	// commit log bootstrapper
+	noOpAll := bootstrapper.NewNoOpAllBootstrapper()
+	bsOpts := newDefaulTestResultOptions(setup.storageOpts)
+	bclOpts := bcl.NewOptions().
+		SetResultOptions(bsOpts).
+		SetCommitLogOptions(commitLogOpts)
+
+	fsOpts := setup.storageOpts.CommitLogOptions().FilesystemOptions()
+	inspection, err := bcl.InspectFilesystem(fsOpts)
+	require.NoError(t, err)
+	commitLogBootstrapper, err := bcl.NewCommitLogBootstrapper(bclOpts, inspection, noOpAll)
+	require.NoError(t, err)
+	// fs bootstrapper
+	filePathPrefix := fsOpts.FilePathPrefix()
+	bfsOpts := fs.NewOptions().
+		SetResultOptions(bsOpts).
+		SetFilesystemOptions(fsOpts).
+		SetDatabaseBlockRetrieverManager(setup.storageOpts.DatabaseBlockRetrieverManager())
+	fsBootstrapper := fs.NewFileSystemBootstrapper(filePathPrefix, bfsOpts, commitLogBootstrapper)
+	// bootstrapper storage opts
+	process := bootstrap.NewProcess(fsBootstrapper, bsOpts)
+	setup.storageOpts = setup.storageOpts.SetBootstrapProcess(process)
+
 	// Start the server
 	require.NoError(t, setup.startServer())
 	log.Debug("server is now up")

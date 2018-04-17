@@ -21,6 +21,7 @@
 package commitlog
 
 import (
+	"github.com/m3db/m3db/persist/fs"
 	"github.com/m3db/m3db/storage/bootstrap"
 	"github.com/m3db/m3db/storage/bootstrap/bootstrapper"
 )
@@ -34,16 +35,33 @@ type commitLogBootstrapper struct {
 	bootstrap.Bootstrapper
 }
 
+// FilesystemInspection contains the outcome of a filesystem inspection
+type FilesystemInspection struct {
+	// orderedCommitlogFiles contains all commitlog filenames that existed
+	// before the node began accepting writes.
+	orderedCommitlogFiles []string
+}
+
+// CommitlogFilesSet generates a set of unique commitlog files
+func (f FilesystemInspection) CommitlogFilesSet() map[string]struct{} {
+	set := map[string]struct{}{}
+	for _, file := range f.orderedCommitlogFiles {
+		set[file] = struct{}{}
+	}
+	return set
+}
+
 // NewCommitLogBootstrapper creates a new bootstrapper to bootstrap from commit log files.
 func NewCommitLogBootstrapper(
 	opts Options,
+	inspection FilesystemInspection,
 	next bootstrap.Bootstrapper,
 ) (bootstrap.Bootstrapper, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
 
-	src := newCommitLogSource(opts)
+	src := newCommitLogSource(opts, inspection)
 	b := &commitLogBootstrapper{}
 	b.Bootstrapper = bootstrapper.NewBaseBootstrapper(b.String(),
 		src, opts.ResultOptions(), next)
@@ -52,4 +70,23 @@ func NewCommitLogBootstrapper(
 
 func (*commitLogBootstrapper) String() string {
 	return CommitLogBootstrapperName
+}
+
+// InspectFilesystem scans the filesystem and generates a FilesystemInspection
+// which the commitlog bootstrapper needs to avoid reading commitlog files that
+// were written *after* the process has already started. I.E in order to distinguish
+// between files that were already on disk before the process started, and those that
+// were written by the process itself once it started accepting writes (but before
+// bootstrapping had complete) we export a function which can be called during node
+// startup.
+func InspectFilesystem(fsOpts fs.Options) (FilesystemInspection, error) {
+	path := fs.CommitLogsDirPath(fsOpts.FilePathPrefix())
+	files, err := fs.CommitLogFiles(path)
+	if err != nil {
+		return FilesystemInspection{}, err
+	}
+
+	return FilesystemInspection{
+		orderedCommitlogFiles: files,
+	}, nil
 }

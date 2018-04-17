@@ -68,7 +68,9 @@ func TestCommitLogBootstrap(t *testing.T) {
 	bclOpts := bcl.NewOptions().
 		SetResultOptions(bsOpts).
 		SetCommitLogOptions(commitLogOpts)
-	bs, err := bcl.NewCommitLogBootstrapper(bclOpts, noOpAll)
+	inspection, err := bcl.InspectFilesystem(commitLogOpts.FilesystemOptions())
+	require.NoError(t, err)
+	bs, err := bcl.NewCommitLogBootstrapper(bclOpts, inspection, noOpAll)
 	require.NoError(t, err)
 	process := bootstrap.NewProcess(bs, bsOpts)
 	setup.storageOpts = setup.storageOpts.SetBootstrapProcess(process)

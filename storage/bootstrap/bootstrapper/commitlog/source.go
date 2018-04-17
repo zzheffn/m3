@@ -59,6 +59,8 @@ type commitLogSource struct {
 	snapshotFilesFn snapshotFilesFn
 	snapshotTimeFn  snapshotTimeFn
 	newReaderFn     newReaderFn
+
+	inspection FilesystemInspection
 }
 
 type encoder struct {
@@ -70,7 +72,7 @@ type snapshotFilesFn func(filePathPrefix string, namespace ident.ID, shard uint3
 type snapshotTimeFn func(filePathPrefix string, id fs.FilesetFileIdentifier, readerBufferSize int, decoder *msgpack.Decoder) (time.Time, error)
 type newReaderFn func(bytesPool pool.CheckedBytesPool, opts fs.Options) (fs.FileSetReader, error)
 
-func newCommitLogSource(opts Options) bootstrap.Source {
+func newCommitLogSource(opts Options, inspection FilesystemInspection) bootstrap.Source {
 	return &commitLogSource{
 		opts: opts,
 		log:  opts.ResultOptions().InstrumentOptions().Logger(),
@@ -79,6 +81,8 @@ func newCommitLogSource(opts Options) bootstrap.Source {
 		snapshotFilesFn: fs.SnapshotFiles,
 		snapshotTimeFn:  fs.SnapshotTime,
 		newReaderFn:     fs.NewReader,
+
+		inspection: inspection,
 	}
 }
 func (s *commitLogSource) Can(strategy bootstrap.Strategy) bool {
@@ -97,11 +101,6 @@ func (s *commitLogSource) Available(
 	// time ranges requested even if not enough data, just to succeed
 	// the bootstrap
 	return shardsTimeRanges
-}
-
-type shardResultAndShard struct {
-	shard  uint32
-	result result.ShardResult
 }
 
 // Read will read a combination of the available snapshot files and commit log files to restore
@@ -190,7 +189,7 @@ func (s *commitLogSource) Read(
 	// Once we have the desired datastructure, we next need to figure out the minimum most recent snapshot
 	// for that block across all shards. This will help us determine how much of the commit log we need to
 	// read. The new datastructure we're trying to generate looks like:
-	// map[blockStart]minimumMostRecentSnapshotTime (accross all shards)
+	// map[blockStart]minimumMostRecentSnapshotTime (across all shards)
 	// This structure is important because it tells us how much of the commit log we need to read for each
 	// block that we're trying to bootstrap (because the commit log is shared across all shards).
 	minimumMostRecentSnapshotTimeByBlock := s.minimumMostRecentSnapshotTimeByBlock(
@@ -224,7 +223,15 @@ func (s *commitLogSource) Read(
 		})
 	}
 
-	readCommitlogPred := func(commitLogFileStart time.Time, commitLogFileBlockSize time.Duration) bool {
+	commitlogFilesSet := s.inspection.CommitlogFilesSet()
+	readCommitlogPred := func(filename string, commitLogFileStart time.Time, commitLogFileBlockSize time.Duration) bool {
+		_, ok := commitlogFilesSet[filename]
+		if !ok {
+			// This commitlog file did not exist before the node started which means it was created
+			// as part of the existing process and the data already exists in memory.
+			return false
+		}
+
 		// Note that the rangesToCheck that we generated above are *logical* ranges not
 		// physical ones. I.E a range of 12:30PM to 2:00PM means that we need all data with
 		// a timestamp between 12:30PM and 2:00PM which is strictly different than all datapoints
@@ -985,26 +992,6 @@ func (s *commitLogSource) logMergeShardsOutcome(shardErrs []int, shardEmptyErrs 
 	}
 	if emptyErrSum > 0 {
 		s.log.Errorf("error bootstrapping from commit log: %d empty unmerged blocks errors", emptyErrSum)
-	}
-}
-
-func newReadCommitLogPredicate(
-	ns namespace.Metadata,
-	shardRange xtime.Range,
-	opts Options,
-) commitlog.FileFilterPredicate {
-	// How far into the past or future a commitlog might contain a write for a
-	// previous or future block
-	bufferPast := ns.Options().RetentionOptions().BufferPast()
-	bufferFuture := ns.Options().RetentionOptions().BufferFuture()
-
-	return func(entryTime time.Time, entryDuration time.Duration) bool {
-		// If there is any amount of overlap between the commitlog range and the
-		// shardRange then we need to read the commitlog file
-		return xtime.Range{
-			Start: entryTime.Add(-bufferPast),
-			End:   entryTime.Add(entryDuration).Add(bufferFuture),
-		}.Overlaps(shardRange)
 	}
 }
 

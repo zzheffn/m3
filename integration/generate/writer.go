@@ -39,8 +39,12 @@ type writer struct {
 	opts Options
 }
 
+// WriteDatapointPredicate is a function that returns a bool indicating
+// whetere an individual datapoint should be written.
 type WriteDatapointPredicate func(dp ts.Datapoint) bool
 
+// WriteAllPredicate satisfies the WriteDatapointPredicate and can be used
+// as a placeholder when the caller wants all datapoints to be written.
 func WriteAllPredicate(_ ts.Datapoint) bool {
 	return true
 }

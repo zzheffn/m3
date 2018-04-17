@@ -57,6 +57,7 @@ var (
 )
 
 type options struct {
+	encoderPool      encoding.EncoderPool
 	clockOpts        clock.Options
 	retentionPeriod  time.Duration
 	blockSize        time.Duration
@@ -65,7 +66,6 @@ type options struct {
 	newDirectoryMode os.FileMode
 	writerBufferSize int
 	writeEmptyShards bool
-	encoderPool      encoding.EncoderPool
 	writeSnapshot    bool
 }
 

@@ -265,7 +265,11 @@ func TestCommitLogSourcePropCorrectlyBootstrapsFromCommitlog(t *testing.T) {
 			}
 
 			// Instantiate a commitlog source
-			source, err := NewCommitLogBootstrapper(bootstrapOpts, nil)
+			inspection, err := InspectFilesystem(fsOpts)
+			if err != nil {
+				return false, err
+			}
+			source, err := NewCommitLogBootstrapper(bootstrapOpts, inspection, nil)
 			if err != nil {
 				return false, err
 			}
@@ -335,11 +339,6 @@ type generatedWrite struct {
 	annotation ts.Annotation
 }
 
-type generatedWriteTimes struct {
-	arrivedAt time.Time
-	timestamp time.Time
-}
-
 func (w generatedWrite) String() string {
 	return fmt.Sprintf("ID = %v, Datapoint = %+v", w.series.ID.String(), w.datapoint)
 }
@@ -397,7 +396,7 @@ func genWrite(start time.Time, bufferPast, bufferFuture time.Duration, ns string
 		id := val[0].(string)
 		t := val[1].(time.Time)
 
-		var a = t
+		var a time.Time
 		if val[2].(bool) {
 			a = t.Add(-bufferFuture)
 		} else {

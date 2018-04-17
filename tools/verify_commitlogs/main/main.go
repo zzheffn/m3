@@ -238,7 +238,11 @@ func main() {
 
 	// Don't bootstrap anything else
 	next := bootstrapper.NewNoOpAllBootstrapper()
-	source, err := commitlogsrc.NewCommitLogBootstrapper(opts, next)
+	inspection, err := commitlogsrc.InspectFilesystem(fsOpts)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	source, err := commitlogsrc.NewCommitLogBootstrapper(opts, inspection, next)
 	if err != nil {
 		log.Fatal(err.Error())
 	}

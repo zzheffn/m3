@@ -87,7 +87,7 @@ func testOptions() Options {
 
 func TestAvailableEmptyRangeError(t *testing.T) {
 	opts := testOptions()
-	src := newCommitLogSource(opts)
+	src := newCommitLogSource(opts, FilesystemInspection{})
 	res := src.Available(testNsMetadata(t), result.ShardTimeRanges{})
 	require.True(t, result.ShardTimeRanges{}.Equal(res))
 }
@@ -95,7 +95,7 @@ func TestAvailableEmptyRangeError(t *testing.T) {
 func TestReadEmpty(t *testing.T) {
 	opts := testOptions()
 
-	src := newCommitLogSource(opts)
+	src := newCommitLogSource(opts, FilesystemInspection{})
 
 	res, err := src.Read(testNsMetadata(t), result.ShardTimeRanges{},
 		testDefaultRunOpts)
@@ -105,7 +105,7 @@ func TestReadEmpty(t *testing.T) {
 
 func TestReadErrorOnNewIteratorError(t *testing.T) {
 	opts := testOptions()
-	src := newCommitLogSource(opts).(*commitLogSource)
+	src := newCommitLogSource(opts, FilesystemInspection{}).(*commitLogSource)
 
 	src.newIteratorFn = func(_ commitlog.IteratorOpts) (commitlog.Iterator, error) {
 		return nil, fmt.Errorf("an error")
@@ -125,7 +125,7 @@ func TestReadErrorOnNewIteratorError(t *testing.T) {
 func TestReadOrderedValues(t *testing.T) {
 	opts := testOptions()
 	md := testNsMetadata(t)
-	src := newCommitLogSource(opts).(*commitLogSource)
+	src := newCommitLogSource(opts, FilesystemInspection{}).(*commitLogSource)
 
 	blockSize := md.Options().RetentionOptions().BlockSize()
 	now := time.Now()
@@ -169,7 +169,7 @@ func TestReadOrderedValues(t *testing.T) {
 func TestReadUnorderedValues(t *testing.T) {
 	opts := testOptions()
 	md := testNsMetadata(t)
-	src := newCommitLogSource(opts).(*commitLogSource)
+	src := newCommitLogSource(opts, FilesystemInspection{}).(*commitLogSource)
 
 	blockSize := md.Options().RetentionOptions().BlockSize()
 	now := time.Now()
@@ -210,7 +210,7 @@ func TestReadUnorderedValues(t *testing.T) {
 func TestReadTrimsToRanges(t *testing.T) {
 	opts := testOptions()
 	md := testNsMetadata(t)
-	src := newCommitLogSource(opts).(*commitLogSource)
+	src := newCommitLogSource(opts, FilesystemInspection{}).(*commitLogSource)
 
 	blockSize := md.Options().RetentionOptions().BlockSize()
 	now := time.Now()
@@ -257,7 +257,7 @@ func TestItMergesSnapshotsAndCommitLogs(t *testing.T) {
 
 	opts := testOptions()
 	md := testNsMetadata(t)
-	src := newCommitLogSource(opts).(*commitLogSource)
+	src := newCommitLogSource(opts, FilesystemInspection{}).(*commitLogSource)
 
 	blockSize := md.Options().RetentionOptions().BlockSize()
 	now := time.Now()
@@ -308,7 +308,7 @@ func TestItMergesSnapshotsAndCommitLogs(t *testing.T) {
 
 	mockReader := fs.NewMockFileSetReader(ctrl)
 	mockReader.EXPECT().Open(fs.ReaderOpenOptionsMatcher{
-		// TOOD: Share with above
+		// TODO: Share with above
 		ID: fs.FilesetFileIdentifier{
 			Namespace:  testNamespaceID,
 			BlockStart: start,
@@ -318,7 +318,7 @@ func TestItMergesSnapshotsAndCommitLogs(t *testing.T) {
 		FilesetType: persist.FilesetSnapshotType,
 	}).Return(nil).AnyTimes()
 	// mockReader.EXPECT().Open(fs.ReaderOpenOptionsMatcher{
-	// 	// TOOD: Share with above
+	// 	// TODO: Share with above
 	// 	ID: fs.FilesetFileIdentifier{
 	// 		Namespace:  testNamespaceID,
 	// 		BlockStart: start,
@@ -348,7 +348,7 @@ func TestItMergesSnapshotsAndCommitLogs(t *testing.T) {
 	mockReader.EXPECT().Read().Return(
 		foo.ID,
 		checked.NewBytes(bytes, nil),
-		// TODO: Calcualte correct checksum
+		// TODO: Calculate correct checksum
 		uint32(0),
 		nil,
 	)
@@ -367,100 +367,6 @@ func TestItMergesSnapshotsAndCommitLogs(t *testing.T) {
 	expectedValues := append([]testValue{}, commitLogValues[0:3]...)
 	expectedValues = append(expectedValues, snapshotValues...)
 	require.NoError(t, verifyShardResultsAreCorrect(expectedValues, blockSize, res.ShardResults(), opts))
-}
-
-func TestNewReadCommitLogPredicate(t *testing.T) {
-	testCases := []struct {
-		title                    string
-		commitLogTimes           []time.Time
-		shardTimeRanges          xtime.Range
-		bufferPast               time.Duration
-		bufferFuture             time.Duration
-		blockSize                time.Duration
-		expectedPredicateResults []bool
-	}{
-		{
-			title: "Test no overlap",
-			commitLogTimes: []time.Time{
-				time.Time{},
-			},
-			shardTimeRanges: xtime.Range{
-				Start: time.Time{}.Add(2 * time.Hour),
-				End:   time.Time{}.Add(3 * time.Hour),
-			},
-			bufferPast:               5 * time.Minute,
-			bufferFuture:             10 * time.Minute,
-			blockSize:                time.Hour,
-			expectedPredicateResults: []bool{false},
-		},
-		{
-			title: "Test overlap",
-			commitLogTimes: []time.Time{
-				time.Time{},
-			},
-			shardTimeRanges: xtime.Range{
-				Start: time.Time{},
-				End:   time.Time{}.Add(time.Hour),
-			},
-			bufferPast:               5 * time.Minute,
-			bufferFuture:             10 * time.Minute,
-			blockSize:                time.Hour,
-			expectedPredicateResults: []bool{true},
-		},
-		{
-			title: "Test overlap bufferFuture",
-			commitLogTimes: []time.Time{
-				time.Time{},
-			},
-			shardTimeRanges: xtime.Range{
-				Start: time.Time{}.Add(1*time.Hour + 1*time.Minute),
-				End:   time.Time{}.Add(2 * time.Hour),
-			},
-			bufferPast:               5 * time.Minute,
-			bufferFuture:             10 * time.Minute,
-			blockSize:                time.Hour,
-			expectedPredicateResults: []bool{true},
-		},
-		{
-			title: "Test overlap bufferPast",
-			commitLogTimes: []time.Time{
-				time.Time{},
-			},
-			shardTimeRanges: xtime.Range{
-				Start: time.Time{}.Add(-1 * time.Hour),
-				End:   time.Time{}.Add(-1 * time.Minute),
-			},
-			bufferPast:               5 * time.Minute,
-			bufferFuture:             10 * time.Minute,
-			blockSize:                time.Hour,
-			expectedPredicateResults: []bool{true},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.title, func(t *testing.T) {
-			// Setup opts with specified blocksize
-			opts := testOptions()
-			commitLogOptions := opts.CommitLogOptions().SetBlockSize(tc.blockSize)
-			opts = opts.SetCommitLogOptions(commitLogOptions)
-
-			// Setup namespace with specified bufferPast / bufferFuture
-			nsOptions := namespace.NewOptions()
-			retentionOptions := nsOptions.RetentionOptions().
-				SetBufferPast(tc.bufferPast).
-				SetBufferFuture(tc.bufferFuture)
-			nsOptions = nsOptions.SetRetentionOptions(retentionOptions)
-			ns, err := namespace.NewMetadata(testNamespaceID, nsOptions)
-			require.NoError(t, err)
-
-			// Instantiate and test predicate
-			predicate := newReadCommitLogPredicate(ns, tc.shardTimeRanges, opts)
-			for i, commitLogTime := range tc.commitLogTimes {
-				predicateResult := predicate(commitLogTime, tc.blockSize)
-				require.Equal(t, tc.expectedPredicateResults[i], predicateResult)
-			}
-		})
-	}
 }
 
 type testValue struct {

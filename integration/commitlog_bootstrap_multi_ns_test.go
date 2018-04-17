@@ -75,10 +75,6 @@ func TestCommitLogBootstrapMultipleNamespaces(t *testing.T) {
 	bclOpts := bcl.NewOptions().
 		SetResultOptions(bsOpts).
 		SetCommitLogOptions(commitLogOpts)
-	bs, err := bcl.NewCommitLogBootstrapper(bclOpts, noOpAll)
-	require.NoError(t, err)
-	process := bootstrap.NewProcess(bs, bsOpts)
-	setup.storageOpts = setup.storageOpts.SetBootstrapProcess(process)
 
 	log := setup.storageOpts.InstrumentOptions().Logger()
 
@@ -111,6 +107,14 @@ func TestCommitLogBootstrapMultipleNamespaces(t *testing.T) {
 
 	later := now.Add(4 * ns1BlockSize)
 	setup.setNowFn(later)
+
+	inspection, err := bcl.InspectFilesystem(commitLogOpts.FilesystemOptions())
+	require.NoError(t, err)
+	bs, err := bcl.NewCommitLogBootstrapper(bclOpts, inspection, noOpAll)
+	require.NoError(t, err)
+	process := bootstrap.NewProcess(bs, bsOpts)
+	setup.storageOpts = setup.storageOpts.SetBootstrapProcess(process)
+
 	// Start the server with filesystem bootstrapper
 	require.NoError(t, setup.startServer())
 	log.Debug("server is now up")

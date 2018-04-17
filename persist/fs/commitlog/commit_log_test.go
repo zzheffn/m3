@@ -503,7 +503,7 @@ func TestCommitLogIteratorUsesPredicateFilter(t *testing.T) {
 	assert.True(t, len(files) == 3)
 
 	// This predicate should eliminate the first commitlog file
-	commitLogPredicate := func(entryTime time.Time, entryDuration time.Duration) bool {
+	commitLogPredicate := func(filename string, entryTime time.Time, entryDuration time.Duration) bool {
 		return entryTime.After(alignedStart)
 	}
 

@@ -115,10 +115,15 @@ func (bsc BootstrapConfiguration) New(
 				SetDatabaseBlockRetrieverManager(opts.DatabaseBlockRetrieverManager())
 			bs = fs.NewFileSystemBootstrapper(filePathPrefix, fsbopts, bs)
 		case commitlog.CommitLogBootstrapperName:
+			fsopts := opts.CommitLogOptions().FilesystemOptions()
+			inspection, err := commitlog.InspectFilesystem(fsopts)
+			if err != nil {
+				return nil, err
+			}
 			copts := commitlog.NewOptions().
 				SetResultOptions(rsopts).
 				SetCommitLogOptions(opts.CommitLogOptions())
-			bs, err = commitlog.NewCommitLogBootstrapper(copts, bs)
+			bs, err = commitlog.NewCommitLogBootstrapper(copts, inspection, bs)
 			if err != nil {
 				return nil, err
 			}

@@ -202,7 +202,9 @@ func newTestSetupWithCommitLogAndFilesystemBootstrapper(t *testing.T, opts testO
 	bclOpts := bcl.NewOptions().
 		SetResultOptions(bsOpts).
 		SetCommitLogOptions(commitLogOpts)
-	commitLogBootstrapper, err := bcl.NewCommitLogBootstrapper(bclOpts, noOpAll)
+	inspection, err := bcl.InspectFilesystem(fsOpts)
+	require.NoError(t, err)
+	commitLogBootstrapper, err := bcl.NewCommitLogBootstrapper(bclOpts, inspection, noOpAll)
 	require.NoError(t, err)
 
 	// fs bootstrapper
