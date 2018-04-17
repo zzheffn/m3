@@ -212,7 +212,9 @@ func (s *commitLogSource) Read(
 
 		s.log.Infof(
 			"minimum most recent snapshot time for blockStart %d is %d, creating range from: %d to: %d",
-			blockStart, minimumMostRecentSnapshotTime, minimumMostRecentSnapshotTime.Add(-time.Duration(maxBufferPastAndFuture)), blockStart.ToTime().Add(blockSize))
+			blockStart, minimumMostRecentSnapshotTime.Unix(),
+			minimumMostRecentSnapshotTime.Add(-time.Duration(maxBufferPastAndFuture)).Unix(),
+			blockStart.ToTime().Add(blockSize).Unix())
 		rangesToCheck = append(rangesToCheck, xtime.Range{
 			// We have to subtract Max(bufferPast, bufferFuture) for the reasons described
 			// in the method documentation.
