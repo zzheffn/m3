@@ -60,6 +60,8 @@ type flushManager struct {
 	state          flushManagerState
 	isFlushing     tally.Gauge
 	isSnapshotting tally.Gauge
+
+	nowFn func() time.Time
 }
 
 func newFlushManager(database database, scope tally.Scope) databaseFlushManager {
@@ -70,10 +72,11 @@ func newFlushManager(database database, scope tally.Scope) databaseFlushManager 
 		pm:             opts.PersistManager(),
 		isFlushing:     scope.Gauge("flush"),
 		isSnapshotting: scope.Gauge("snapshot"),
+		nowFn:          time.Now,
 	}
 }
 
-func (m *flushManager) Flush(curr time.Time) error {
+func (m *flushManager) Flush(tickStart time.Time) error {
 	// ensure only a single flush is happening at a time
 	m.Lock()
 	if m.state != flushManagerIdle {
@@ -100,7 +103,7 @@ func (m *flushManager) Flush(curr time.Time) error {
 	m.setState(flushManagerFlushInProgress)
 	for _, ns := range namespaces {
 		// Flush first because we will only snapshot if there are no outstanding flushes
-		flushTimes := m.namespaceFlushTimes(ns, curr)
+		flushTimes := m.namespaceFlushTimes(ns, tickStart)
 		multiErr = multiErr.Add(m.flushNamespaceWithTimes(ns, flushTimes, flush))
 	}
 
@@ -112,14 +115,19 @@ func (m *flushManager) Flush(curr time.Time) error {
 	for _, ns := range namespaces {
 		var (
 			blockSize          = ns.Options().RetentionOptions().BlockSize()
-			snapshotBlockStart = m.snapshotBlockStart(ns, curr)
+			snapshotBlockStart = m.snapshotBlockStart(ns, tickStart)
 			prevBlockStart     = snapshotBlockStart.Add(-blockSize)
 		)
 
 		// Only perform snapshots if the previous block (I.E the block directly before
 		// the block that we would snapshot) has been flushed.
 		if !ns.NeedsFlush(prevBlockStart, prevBlockStart) {
-			if err := ns.Snapshot(snapshotBlockStart, curr, flush); err != nil {
+			// Capture our own snapshotime time here because the tick can take a long time
+			// in some cases. I.E If we snapshotted at 1:30PM, but the tick took 10 minutes,
+			// then our snapshot time would appear to be 1:20PM even though the snapshot
+			// contains all data that was in memory up to 1:30PM.
+			snapshotTime := m.nowFn()
+			if err := ns.Snapshot(snapshotBlockStart, snapshotTime, flush); err != nil {
 				detailedErr := fmt.Errorf("namespace %s failed to snapshot data: %v",
 					ns.ID().String(), err)
 				multiErr = multiErr.Add(detailedErr)

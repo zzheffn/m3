@@ -238,6 +238,9 @@ func TestFlushManagerFlushSnapshot(t *testing.T) {
 
 	fm, ns1, ns2 := newMultipleFlushManagerNeedsFlush(t, ctrl)
 	now := time.Now()
+	fm.nowFn = func() time.Time {
+		return now
+	}
 
 	for _, ns := range []*MockdatabaseNamespace{ns1, ns2} {
 		rOpts := ns.Options().RetentionOptions()
