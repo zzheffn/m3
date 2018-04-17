@@ -602,6 +602,7 @@ func (s *commitLogSource) bootstrapSnapshotFile(
 		// TODO: Same comment as above
 		return nil, err
 	}
+	defer reader.Close()
 
 	result := make(map[ident.Hash]dataAndID)
 	for {
