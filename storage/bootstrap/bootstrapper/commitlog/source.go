@@ -213,6 +213,7 @@ func (s *commitLogSource) Read(
 		rangesToCheck = append(rangesToCheck, xtime.Range{
 			// We have to subtract Max(bufferPast, bufferFuture) for the reasons described
 			// in the method documentation.
+			// TODO: Not 100% sure we still need the max() thing
 			Start: minimumMostRecentSnapshotTime.Add(-time.Duration(maxBufferPastAndFuture)),
 			End:   blockStart.ToTime().Add(blockSize),
 		})
@@ -311,6 +312,7 @@ func (s *commitLogSource) Read(
 	}
 
 	for iter.Next() {
+		// TODO: Can skip some datapoints here if they're captured in the snapshot
 		series, dp, unit, annotation := iter.Current()
 		if !s.shouldEncodeSeries(unmerged, blockSize, series, dp) {
 			continue
@@ -734,12 +736,14 @@ func (s *commitLogSource) mergeShards(
 		shardErrs       = make([]int, numShards)
 		shardEmptyErrs  = make([]int, numShards)
 		bootstrapResult = result.NewBootstrapResult()
+		fsWorkerPool    = xsync.NewWorkerPool(1)
 		// Controls how many shards can be merged in parallel
 		workerPool          = xsync.NewWorkerPool(s.opts.MergeShardsConcurrency())
 		bootstrapResultLock sync.Mutex
 		wg                  sync.WaitGroup
 	)
 
+	fsWorkerPool.Init()
 	workerPool.Init()
 
 	for shard, unmergedShard := range unmerged {
@@ -751,7 +755,7 @@ func (s *commitLogSource) mergeShards(
 		mergeShardFunc := func() {
 			var shardResult result.ShardResult
 			shardResult, shardEmptyErrs[shard], shardErrs[shard] = s.mergeShard(
-				ns, uint32(shard), shardsTimeRanges[uint32(shard)], snapshotFilesByShard, unmergedShard, fsOpts, bopts, blopts)
+				ns, uint32(shard), shardsTimeRanges[uint32(shard)], snapshotFilesByShard, unmergedShard, fsOpts, bopts, blopts, fsWorkerPool)
 			if shardResult != nil && len(shardResult.AllSeries()) > 0 {
 				// Prevent race conditions while updating bootstrapResult from multiple go-routines
 				bootstrapResultLock.Lock()
@@ -779,6 +783,7 @@ func (s *commitLogSource) mergeShard(
 	fsOpts fs.Options,
 	bopts result.Options,
 	blopts block.Options,
+	fsWorkerPool xsync.WorkerPool,
 ) (result.ShardResult, int, int) {
 	var shardResult result.ShardResult
 	var numShardEmptyErrs int
@@ -808,12 +813,24 @@ func (s *commitLogSource) mergeShard(
 
 		for blockStart := currRange.Start.Truncate(blockSize); blockStart.Before(currRange.End); blockStart = blockStart.Add(blockSize) {
 			unmergedSeriesBlocks := unmergedShard.encodersBySeries[xtime.ToUnixNano(blockStart)]
-			snapshotData, err := s.bootstrapLatestValidSnapshotFile(
-				ns.ID(), shard, blockStart, snapshotFilesByShard, fsOpts, bytesPool, blocksPool)
-			if err != nil {
-				// TODO: Handle err
-				panic(err)
-			}
+
+			var (
+				signalCh     = make(chan struct{})
+				snapshotData map[ident.Hash]dataAndID
+				err          error
+			)
+
+			fsWorkerPool.Go(func() {
+				snapshotData, err = s.bootstrapLatestValidSnapshotFile(
+					ns.ID(), shard, blockStart, snapshotFilesByShard, fsOpts, bytesPool, blocksPool)
+				if err != nil {
+					// TODO: Handle err
+					panic(err)
+				}
+				signalCh <- struct{}{}
+			})
+			<-signalCh
+
 			for hash, encodersAndID := range unmergedSeriesBlocks {
 				dbbBlock, numSeriesEmptyErrs, numSeriesErrs := s.mergeSeries(
 					blockStart,
