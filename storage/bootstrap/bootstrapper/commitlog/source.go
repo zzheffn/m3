@@ -880,7 +880,7 @@ func (s *commitLogSource) mergeShard(
 				}
 
 				// This data did not have an equivalent in the commitlog so it wasn't
-				// merger prior
+				// merged prior
 				if shardResult == nil {
 					// TODO: FIx this and the other one to set the size based on the length of both
 					shardResult = result.NewShardResult(len(snapshotData), s.opts.ResultOptions())
