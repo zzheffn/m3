@@ -850,6 +850,9 @@ func (s *commitLogSource) mergeShard(
 			})
 			<-signalCh
 
+			s.log.Infof(
+				"merging shard: %d for blockStart: %d, have: %d series from commitlog and %d series from snapshot",
+				shard, blockStart.Unix(), len(unmergedSeriesBlocks), len(snapshotData))
 			for hash, encodersAndID := range unmergedSeriesBlocks {
 				dbbBlock, numSeriesEmptyErrs, numSeriesErrs := s.mergeSeries(
 					blockStart,
@@ -890,6 +893,8 @@ func (s *commitLogSource) mergeShard(
 				shardResult.AddBlock(data.id, pooledBlock)
 			}
 		}
+
+		s.log.Infof("final shardResult for shard: %d has %d series", shard, shardResult.NumSeries())
 	}
 
 	return shardResult, numShardEmptyErrs, numErrs

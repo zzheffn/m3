@@ -1681,6 +1681,8 @@ func (s *dbShard) Flush(
 
 	var multiErr xerrors.MultiError
 	tmpCtx := context.NewContext()
+	// TODO: Make this a metric
+	numSeries := 0
 	s.forEachShardEntry(func(entry *dbShardEntry) bool {
 		series := entry.series
 		// Use a temporary context here so the stream readers can be returned to
@@ -1696,9 +1698,11 @@ func (s *dbShard) Flush(
 			return false
 		}
 
+		numSeries++
 		return true
 	})
 
+	s.logger.Infof("shard %d flushing blockStart %d flushed %d series", s.ID(), blockStart.Unix(), numSeries)
 	if err := prepared.Close(); err != nil {
 		multiErr = multiErr.Add(err)
 	}
