@@ -157,6 +157,9 @@ func (s *commitLogSource) Read(
 		if err != nil {
 			return nil, err
 		}
+		if len(snapshotFiles) == 0 {
+			s.log.Errorf("no snapshot files for shard: %d", shard)
+		}
 		snapshotFilesByShard[shard] = snapshotFiles
 	}
 
@@ -454,7 +457,8 @@ func (s *commitLogSource) minimumMostRecentSnapshotTimeByBlock(
 		// Since we're trying to find a minimum, all subsequent comparisons will be checking
 		// if the new value is less than the current value so we initialize with the maximum
 		// possible value.
-		// TODO: Should this be blockStart.ToTime().Add(blockSize).Add(bufferPast)?
+		// minMostRecentSnapshot := time.Time{}
+		// TODO: This is not accurate always since the snapshot time can extend into bufferPast
 		minMostRecentSnapshot := blockStart.ToTime().Add(blockSize)
 		for shard, mostRecentSnapshotForShard := range mostRecentSnapshotsByShard {
 			blockRange := xtime.Range{Start: blockStart.ToTime(), End: blockStart.ToTime().Add(blockSize)}
@@ -580,6 +584,7 @@ func (s *commitLogSource) bootstrapLatestValidSnapshotFile(
 
 	latestSnapshot, ok := snapshotFiles.LatestValidForBlock(blockStart)
 	if !ok {
+		s.log.Infof("no snapshot file ")
 		// TODO: Error handling here?
 		return nil, nil
 	}

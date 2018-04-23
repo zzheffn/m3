@@ -356,7 +356,7 @@ func genPropTestInputs(ns namespace.Metadata, blockStart time.Time) gopter.Gen {
 	return gopter.CombineGens(
 		// Run iterations of the test with the snapshot time set at any
 		// point between the beginning and end of the block.
-		gen.TimeRange(blockStart, blockSize-15*time.Minute),
+		gen.TimeRange(blockStart, blockSize),
 		// Run iterations with any bufferPast/bufferFuture between zero and
 		// the namespace blocksize (distinct from the commitlog blockSize)
 		gen.Int64Range(0, int64(blockSize)),
