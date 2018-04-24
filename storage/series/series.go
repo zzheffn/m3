@@ -23,6 +23,7 @@ package series
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -404,6 +405,9 @@ func (s *dbSeries) bufferDrained(newBlock block.DatabaseBlock) {
 	// lock already. Executing the drain method occurs during a write if the
 	// buffer needs to drain or if tick is called and series explicitly asks
 	// the buffer to drain ready buckets.
+	s.opts.InstrumentOptions().MetricsScope().Tagged(map[string]string{
+		"block_start": strconv.Itoa(int(newBlock.StartTime().Unix())),
+	}).Counter("buffer-drained").Inc(1)
 	s.mergeBlockWithLock(s.blocks, newBlock)
 }
 
@@ -461,14 +465,20 @@ func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
 
 		// If any received data falls within the buffer then we emplace it there
 		min, _ := s.buffer.MinMax()
+		numBlocksMovedToBuffer := int64(0)
+		numBlocksIgnored := int64(0)
+		numBlocksMerged := int64(0)
 		for tNano, block := range blocks.AllBlocks() {
 			t := tNano.ToTime()
 			if !t.Before(min) {
+				numBlocksMovedToBuffer++
 				if err := s.buffer.Bootstrap(block); err != nil {
 					multiErr = multiErr.Add(s.newBootstrapBlockError(block, err))
 				}
 				blocks.RemoveBlockAt(t)
+				continue
 			}
+			numBlocksIgnored++
 		}
 
 		// If we're overwriting the blocks then merge any existing blocks
@@ -476,6 +486,11 @@ func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
 		for _, existingBlock := range existingBlocks.AllBlocks() {
 			s.mergeBlockWithLock(blocks, existingBlock)
 		}
+		scope := s.opts.InstrumentOptions().MetricsScope().SubScope("series-bootstrap")
+		scope.Counter("blocks-to-buffer").Inc(numBlocksMovedToBuffer)
+		scope.Counter("blocks-ignored").Inc(numBlocksIgnored)
+		scope.Counter("blocks-merged").Inc(numBlocksMerged)
+		numBlocksMerged = int64(blocks.Len())
 	}
 
 	s.blocks = blocks
