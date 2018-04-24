@@ -540,6 +540,7 @@ func (ts *testSetup) close() {
 
 // convenience wrapper used to ensure a tick occurs
 func (ts *testSetup) sleepFor10xTickMinimumInterval() {
+	fmt.Println("sleeping for ", ts.opts.TickMinimumInterval()*10)
 	time.Sleep(ts.opts.TickMinimumInterval() * 10)
 }
 

@@ -181,9 +181,11 @@ func (b *dbBuffer) Write(
 	futureLimit := now.Add(1 * b.bufferFuture)
 	pastLimit := now.Add(-1 * b.bufferPast)
 	if !futureLimit.After(timestamp) {
+		fmt.Println("futureLimit: ", futureLimit)
 		return xerrors.NewInvalidParamsError(errTooFuture)
 	}
 	if !pastLimit.Before(timestamp) {
+		fmt.Println("pastLimit: ", pastLimit)
 		return xerrors.NewInvalidParamsError(errTooPast)
 	}
 
@@ -238,6 +240,7 @@ func bucketNeedsDrain(now time.Time, b *dbBuffer, idx int, start time.Time) int 
 }
 
 func (b *dbBuffer) Tick() bufferTickResult {
+	fmt.Println("BUFFER TICKING")
 	// Avoid capturing any variables with callback
 	mergedOutOfOrder := b.computedForEachBucketAsc(computeAndResetBucketIdx, bucketTick)
 	return bufferTickResult{
@@ -273,7 +276,10 @@ func (b *dbBuffer) DrainAndReset() drainAndResetResult {
 func bucketDrainAndReset(now time.Time, b *dbBuffer, idx int, start time.Time) int {
 	mergedOutOfOrderBlocks := 0
 
+	fmt.Println("now: ", now)
+	fmt.Println("start: ", start)
 	if b.buckets[idx].needsDrain(now, start) {
+		fmt.Println("DRAINING: ", start)
 		// Rotate the buffer to a block, merging if required
 		result, err := b.buckets[idx].discardMerged()
 		if err != nil {
@@ -546,6 +552,8 @@ func (b *dbBufferBucket) finalize() {
 }
 
 func (b *dbBufferBucket) canRead() bool {
+	fmt.Println("b.drained: ", b.drained)
+	fmt.Println("b.empty: ", b.empty)
 	return !b.drained && !b.empty
 }
 
@@ -563,6 +571,11 @@ func (b *dbBufferBucket) needsDrain(
 	blockSize := retentionOpts.BlockSize()
 	bufferPast := retentionOpts.BufferPast()
 
+	fmt.Println("now: ", now)
+	fmt.Println("targetStart: ", targetStart)
+	fmt.Println("canRead(): ", b.canRead())
+	fmt.Println("needsReset(targetStart): ", b.needsReset(targetStart))
+	fmt.Println("b.start.Add(blockSize).Before(now.Add(-bufferPast)): ", b.start.Add(blockSize).Before(now.Add(-bufferPast)))
 	return b.canRead() && (b.needsReset(targetStart) ||
 		b.start.Add(blockSize).Before(now.Add(-bufferPast)))
 }
@@ -570,6 +583,7 @@ func (b *dbBufferBucket) needsDrain(
 func (b *dbBufferBucket) bootstrap(
 	bl block.DatabaseBlock,
 ) {
+	fmt.Println("bootstrapping: ", bl.StartTime(), " into bucket: ", b.start)
 	b.empty = false
 	b.bootstrapped = append(b.bootstrapped, bl)
 }
@@ -607,6 +621,7 @@ func (b *dbBufferBucket) write(
 		Timestamp: timestamp,
 		Value:     value,
 	}, unit, annotation); err != nil {
+		fmt.Println("writing into bucket: ", b.start)
 		return err
 	}
 	b.encoders[idx].lastWriteAt = timestamp

@@ -581,6 +581,7 @@ func (s *dbShard) isClosingWithLock() bool {
 }
 
 func (s *dbShard) Tick(c context.Cancellable) (tickResult, error) {
+	fmt.Println("TICKING")
 	s.removeAnyFlushStatesTooEarly()
 	return s.tickAndExpire(c, tickPolicyRegular)
 }

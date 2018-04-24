@@ -143,6 +143,7 @@ func (s *commitLogSource) Read(
 	shardsTimeRanges result.ShardTimeRanges,
 	_ bootstrap.RunOptions,
 ) (result.BootstrapResult, error) {
+	fmt.Println(shardsTimeRanges.MinMax())
 	if shardsTimeRanges.IsEmpty() {
 		return nil, nil
 	}
@@ -784,7 +785,7 @@ func (s *commitLogSource) mergeShards(
 				// Prevent race conditions while updating bootstrapResult from multiple go-routines
 				bootstrapResultLock.Lock()
 				// Shard is a slice index so conversion to uint32 is safe
-				bootstrapResult.Add(uint32(shard), shardResult, xtime.Ranges{})
+				bootstrapResult.Add(uint32(shard), shardResult, shardsTimeRanges[uint32(shard)])
 				bootstrapResultLock.Unlock()
 			}
 			wg.Done()
@@ -899,7 +900,9 @@ func (s *commitLogSource) mergeShard(
 			}
 		}
 
-		s.log.Infof("final shardResult for shard: %d has %d series", shard, shardResult.NumSeries())
+		if shardResult != nil {
+			s.log.Infof("final shardResult for shard: %d has %d series", shard, shardResult.NumSeries())
+		}
 	}
 
 	return shardResult, numShardEmptyErrs, numErrs

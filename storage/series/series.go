@@ -304,6 +304,7 @@ func (s *dbSeries) Write(
 	annotation []byte,
 ) error {
 	s.Lock()
+	fmt.Println("writing into buffer at time: ", timestamp)
 	err := s.buffer.Write(ctx, timestamp, value, unit, annotation)
 	s.Unlock()
 	return err
