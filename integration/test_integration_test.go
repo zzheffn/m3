@@ -177,6 +177,10 @@ func TestReproduceBug(t *testing.T) {
 				ID: ident.StringID("foo"),
 				Data: []ts.Datapoint{
 					ts.Datapoint{
+						Timestamp: startTime.Add(time.Second),
+						Value:     1,
+					},
+					ts.Datapoint{
 						Timestamp: originalWriteTime,
 						Value:     2,
 					},
