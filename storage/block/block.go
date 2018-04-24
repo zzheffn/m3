@@ -22,6 +22,7 @@ package block
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -197,6 +198,7 @@ func (b *dbBlock) Stream(blocker context.Context) (xio.SegmentReader, error) {
 	}
 
 	if b.mergeTarget != nil {
+		fmt.Println("merge target is not nil!")
 		var mergeStream xio.SegmentReader
 		mergeStream, err = b.mergeTarget.Stream(blocker)
 		if err != nil {

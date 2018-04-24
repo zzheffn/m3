@@ -638,6 +638,7 @@ func (s *dbShard) tickAndExpire(
 		}
 		expired = expired[:0]
 		for _, entry := range currEntries {
+			fmt.Println("wtf tick loop")
 			if i > 0 && i%tickSleepBatch == 0 {
 				// NB(xichen): if the tick is cancelled, we bail out immediately.
 				// The cancellation check is performed on every batch of entries
@@ -670,6 +671,7 @@ func (s *dbShard) tickAndExpire(
 			}
 			if err == series.ErrSeriesAllDatapointsExpired {
 				expired = append(expired, entry)
+				fmt.Println("expiring series")
 				r.expiredSeries++
 			} else {
 				r.activeSeries++
@@ -1687,12 +1689,13 @@ func (s *dbShard) Flush(
 	numBlockDoesNotExist := 0
 	numStreamDoesNotExist := 0
 	s.forEachShardEntry(func(entry *dbShardEntry) bool {
+		fmt.Println("WTF IN flush loop")
 		curr := entry.series
 		// TODO: Temp hack to test commitlog bootstrapping theory
-		_, err := curr.Tick()
-		if err != nil && err != series.ErrSeriesAllDatapointsExpired {
-			multiErr = multiErr.Add(err)
-		}
+		// _, err := curr.Tick()
+		// if err != nil && err != series.ErrSeriesAllDatapointsExpired {
+		// 	multiErr = multiErr.Add(err)
+		// }
 		// Use a temporary context here so the stream readers can be returned to
 		// pool after we finish fetching flushing the series
 		tmpCtx.Reset()

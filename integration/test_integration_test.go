@@ -35,6 +35,8 @@ import (
 	"github.com/m3db/m3db/storage/bootstrap/result"
 	"github.com/m3db/m3db/storage/namespace"
 	"github.com/m3db/m3db/ts"
+	"github.com/m3db/m3x/ident"
+	xtime "github.com/m3db/m3x/time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -74,39 +76,27 @@ func TestReproduceBug(t *testing.T) {
 
 	// Write test data
 	log.Info("generating data")
-	now := setup.getNowFn()
-	seriesMaps := generateSeriesMaps(30, now.Add(time.Second), now.Add(blockSize))
+	now := setup.getNowFn().Truncate(blockSize)
+	setup.setNowFn(now)
+	startTime := now
+	seriesMaps := map[xtime.UnixNano]generate.SeriesBlock{
+		xtime.ToUnixNano(now): generate.SeriesBlock{
+			generate.Series{
+				ID: ident.StringID("foo"),
+				Data: []ts.Datapoint{
+					ts.Datapoint{
+						Timestamp: now.Add(time.Second),
+						Value:     1,
+					},
+				},
+			},
+		},
+	}
 	log.Info("writing data")
-	// TODO: Set the snapshot time
-	numDatapointsNotInSnapshots := 0
-	writeSnapshotsWithPredicate(t, setup, commitLogOpts, seriesMaps, ns1, nil, func(dp ts.Datapoint) bool {
-		blockStart := dp.Timestamp.Truncate(blockSize)
-		// TODO: Make this less ghetto
-		if dp.Timestamp.Before(blockStart.Add(10 * time.Second)) {
-			// TODO: Update this comment
-			// Snapshot files will only contain writes from the first minute of the block
-			return true
-		}
 
-		numDatapointsNotInSnapshots++
-		return false
-	})
-
-	numDatapointsNotInCommitLogs := 0
 	writeCommitLogDataWithPredicate(t, setup, commitLogOpts, seriesMaps, ns1, func(dp ts.Datapoint) bool {
-		blockStart := dp.Timestamp.Truncate(blockSize)
-		// TODO: Make this less ghetto
-		if dp.Timestamp.Equal(blockStart.Add(10*time.Second)) || dp.Timestamp.After(blockStart.Add(10*time.Second)) {
-			return true
-		}
-
-		numDatapointsNotInCommitLogs++
-		return false
+		return true
 	})
-
-	// Make sure we actually excluded some datapoints from the snapshot and commitlog files
-	require.True(t, numDatapointsNotInSnapshots > 0)
-	require.True(t, numDatapointsNotInCommitLogs > 0)
 
 	log.Info("finished writing data")
 
@@ -137,14 +127,35 @@ func TestReproduceBug(t *testing.T) {
 	setup.storageOpts = setup.storageOpts.SetBootstrapProcess(process)
 
 	// Start the server with filesystem bootstrapper
+	var originalBlockStart time.Time
+	var originalWriteTime time.Time
 	go func() {
 		setup.sleepFor10xTickMinimumInterval()
-		for _, data := range seriesMaps {
-			err := setup.writeBatch(ns1.ID(), data)
-			if err != nil {
-				panic(err)
-			}
+		now = now.Add(blockSize)
+		setup.setNowFn(now)
+		originalBlockStart = now
+		originalWriteTime = now.Add(-10 * time.Second)
+		err := setup.writeBatch(ns1.ID(), generate.SeriesBlock{
+			generate.Series{
+				ID: ident.StringID("foo"),
+				Data: []ts.Datapoint{
+					ts.Datapoint{
+						Timestamp: now.Add(-10 * time.Second),
+						Value:     2,
+					},
+				},
+			}})
+		now = now.Add(ropts.BufferPast()).Add(time.Second)
+		setup.setNowFn(now)
+		if err != nil {
+			panic(err)
 		}
+		// for _, data := range seriesMaps {
+		// 	err := setup.writeBatch(ns1.ID(), data)
+		// 	if err != nil {
+		// 		panic(err)
+		// 	}
+		// }
 		setup.sleepFor10xTickMinimumInterval()
 		fmt.Println("sending signal!")
 		signalCh <- struct{}{}
@@ -160,16 +171,33 @@ func TestReproduceBug(t *testing.T) {
 
 	// Verify in-memory data match what we expect - all writes from seriesMaps
 	// should be present
-	metadatasByShard := testSetupMetadatas(t, setup, testNamespaces[0], now.Add(-2*blockSize), now)
+	expectedSeriesMaps := map[xtime.UnixNano]generate.SeriesBlock{
+		xtime.ToUnixNano(startTime): generate.SeriesBlock{
+			generate.Series{
+				ID: ident.StringID("foo"),
+				Data: []ts.Datapoint{
+					ts.Datapoint{
+						Timestamp: originalWriteTime,
+						Value:     2,
+					},
+				},
+			},
+		},
+	}
+	metadatasByShard := testSetupMetadatas(t, setup, testNamespaces[0], startTime, startTime.Add(blockSize))
 	observedSeriesMaps := testSetupToSeriesMaps(t, setup, ns1, metadatasByShard)
-	verifySeriesMapsEqual(t, seriesMaps, observedSeriesMaps)
+	for key, val := range observedSeriesMaps {
+		fmt.Println("key: ", key)
+		fmt.Println("val: ", val)
+	}
+	verifySeriesMapsEqual(t, expectedSeriesMaps, observedSeriesMaps)
 
 	// Verify in-memory data match what we expect - no writes should be present
 	// because we didn't issue any writes for this namespaces
-	emptySeriesMaps := make(generate.SeriesBlocksByStart)
-	metadatasByShard2 := testSetupMetadatas(t, setup, testNamespaces[1], now.Add(-2*blockSize), now)
-	observedSeriesMaps2 := testSetupToSeriesMaps(t, setup, ns2, metadatasByShard2)
-	verifySeriesMapsEqual(t, emptySeriesMaps, observedSeriesMaps2)
+	// emptySeriesMaps := make(generate.SeriesBlocksByStart)
+	// metadatasByShard2 := testSetupMetadatas(t, setup, testNamespaces[1], now.Add(-2*blockSize), now)
+	// observedSeriesMaps2 := testSetupToSeriesMaps(t, setup, ns2, metadatasByShard2)
+	// verifySeriesMapsEqual(t, emptySeriesMaps, observedSeriesMaps2)
 
 }
 

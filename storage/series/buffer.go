@@ -160,7 +160,7 @@ func bucketResetStart(now time.Time, b *dbBuffer, idx int, start time.Time) int 
 func (b *dbBuffer) MinMax() (time.Time, time.Time) {
 	var min, max time.Time
 	for i := range b.buckets {
-		if min.IsZero() || b.buckets[i].start.Before(min) {
+		if (min.IsZero() || b.buckets[i].start.Before(min)) && !b.buckets[i].drained {
 			min = b.buckets[i].start
 		}
 		if max.IsZero() || b.buckets[i].start.After(max) {
