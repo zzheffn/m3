@@ -201,6 +201,7 @@ func (b *dbBuffer) writableBucketIdx(t time.Time) int {
 	return int(t.Truncate(b.blockSize).UnixNano() / int64(b.blockSize) % bucketsLen)
 }
 
+// TODO: SHOULD CHECK bootstrapped blocks too
 func (b *dbBuffer) IsEmpty() bool {
 	canReadAny := false
 	for i := range b.buckets {

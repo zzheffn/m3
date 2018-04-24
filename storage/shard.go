@@ -1683,6 +1683,8 @@ func (s *dbShard) Flush(
 	tmpCtx := context.NewContext()
 	// TODO: Make this a metric
 	numSeries := 0
+	numBlockDoesNotExist := 0
+	numStreamDoesNotExist := 0
 	s.forEachShardEntry(func(entry *dbShardEntry) bool {
 		curr := entry.series
 		// TODO: Temp hack to test commitlog bootstrapping theory
@@ -1694,6 +1696,14 @@ func (s *dbShard) Flush(
 		// pool after we finish fetching flushing the series
 		tmpCtx.Reset()
 		err = curr.Flush(tmpCtx, blockStart, prepared.Persist)
+		if err == series.ErrBlockDoesNotExist {
+			numBlockDoesNotExist++
+			err = nil
+		}
+		if err == series.ErrStreamDoesNotExist {
+			numStreamDoesNotExist++
+			err = nil
+		}
 		tmpCtx.BlockingClose()
 
 		if err != nil {
@@ -1707,7 +1717,9 @@ func (s *dbShard) Flush(
 		return true
 	})
 
-	s.logger.Infof("shard %d flushing blockStart %d flushed %d series", s.ID(), blockStart.Unix(), numSeries)
+	s.logger.Infof(
+		"shard %d flushing blockStart %d flushed %d series, %d block not exist and %d stream not exist",
+		s.ID(), blockStart.Unix(), numSeries, numBlockDoesNotExist, numStreamDoesNotExist)
 	if err := prepared.Close(); err != nil {
 		multiErr = multiErr.Add(err)
 	}

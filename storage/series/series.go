@@ -52,6 +52,9 @@ var (
 
 	errSeriesIsBootstrapping = errors.New("series is bootstrapping")
 	errSeriesNotBootstrapped = errors.New("series is not yet bootstrapped")
+
+	ErrBlockDoesNotExist  = errors.New("block does not exist")
+	ErrStreamDoesNotExist = errors.New("stream does not exists")
 )
 
 type dbSeries struct {
@@ -588,8 +591,9 @@ func (s *dbSeries) Flush(
 	}
 	b, exists := s.blocks.BlockAt(blockStart)
 	if !exists {
+		// HERE
 		s.RUnlock()
-		return nil
+		return ErrBlockDoesNotExist
 	}
 
 	sr, err := b.Stream(ctx)
@@ -599,7 +603,8 @@ func (s *dbSeries) Flush(
 		return err
 	}
 	if sr == nil {
-		return nil
+		// HERE
+		return ErrStreamDoesNotExist
 	}
 	segment, err := sr.Segment()
 	if err != nil {
