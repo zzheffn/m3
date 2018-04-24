@@ -23,7 +23,6 @@ package series
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -406,7 +405,8 @@ func (s *dbSeries) bufferDrained(newBlock block.DatabaseBlock) {
 	// buffer needs to drain or if tick is called and series explicitly asks
 	// the buffer to drain ready buckets.
 	s.opts.InstrumentOptions().MetricsScope().Tagged(map[string]string{
-		"block_start": strconv.Itoa(int(newBlock.StartTime().Unix())),
+		"block_start": newBlock.StartTime().String(),
+		"service":     "statsdex_m3dbnode_test",
 	}).Counter("buffer-drained").Inc(1)
 	s.mergeBlockWithLock(s.blocks, newBlock)
 }
