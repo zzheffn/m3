@@ -482,7 +482,7 @@ func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
 
 		// If we're overwriting the blocks then merge any existing blocks
 		// already drained
-		for _, blockToMerge := range existingBlocks.AllBlocks() {
+		for _, existingBlock := range existingBlocks.AllBlocks() {
 			s.mergeBlockWithLock(blocks, existingBlock)
 			numBlocksMerged++
 		}
