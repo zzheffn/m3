@@ -784,7 +784,7 @@ func (s *commitLogSource) mergeShards(
 				// Prevent race conditions while updating bootstrapResult from multiple go-routines
 				bootstrapResultLock.Lock()
 				// Shard is a slice index so conversion to uint32 is safe
-				bootstrapResult.Add(uint32(shard), shardResult, shardsTimeRanges[uint32(shard)])
+				bootstrapResult.Add(uint32(shard), shardResult, xtime.Ranges{})
 				bootstrapResultLock.Unlock()
 			}
 			wg.Done()
