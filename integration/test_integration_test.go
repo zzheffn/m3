@@ -23,7 +23,6 @@
 package integration
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -100,16 +99,12 @@ func TestReproduceBug(t *testing.T) {
 
 	log.Info("finished writing data")
 
-	fmt.Println("now: ", now)
-	fmt.Println("it is now: ", now.Add(ropts.BufferPast()).Add(time.Second))
 	setup.setNowFn(now.Add(ropts.BufferPast()).Add(time.Second))
 
 	bsOpts := newDefaulTestResultOptions(setup.storageOpts)
 	signalCh := make(chan struct{})
 	test := NewTestBootstrapperSource(TestBootstrapperOptions{
 		read: func(namespace.Metadata, result.ShardTimeRanges, bootstrap.RunOptions) (result.BootstrapResult, error) {
-			// panic("wtf")
-			fmt.Println("waiting for signal!")
 			<-signalCh
 			return result.NewBootstrapResult(), nil
 		},
@@ -157,7 +152,6 @@ func TestReproduceBug(t *testing.T) {
 		// 	}
 		// }
 		setup.sleepFor10xTickMinimumInterval()
-		fmt.Println("sending signal!")
 		signalCh <- struct{}{}
 	}()
 	require.NoError(t, setup.startServer())
@@ -190,10 +184,6 @@ func TestReproduceBug(t *testing.T) {
 	}
 	metadatasByShard := testSetupMetadatas(t, setup, testNamespaces[0], startTime, startTime.Add(blockSize))
 	observedSeriesMaps := testSetupToSeriesMaps(t, setup, ns1, metadatasByShard)
-	for key, val := range observedSeriesMaps {
-		fmt.Println("key: ", key)
-		fmt.Println("val: ", val)
-	}
 	verifySeriesMapsEqual(t, expectedSeriesMaps, observedSeriesMaps)
 
 	// Verify in-memory data match what we expect - no writes should be present

@@ -158,11 +158,9 @@ func (s *dbSeries) updateBlocksWithLock() updateBlocksResult {
 		expireCutoff = now.Add(-ropts.RetentionPeriod()).Truncate(ropts.BlockSize())
 		wiredTimeout = ropts.BlockDataExpiryAfterNotAccessedPeriod()
 	)
-	fmt.Println("in tick, num blocks: ", len(s.blocks.AllBlocks()))
 	for startNano, currBlock := range s.blocks.AllBlocks() {
 		start := startNano.ToTime()
 		if start.Before(expireCutoff) {
-			fmt.Println("evicting cutoff: ", start)
 			s.blocks.RemoveBlockAt(start)
 			// If we're using the LRU policy and the block was retrieved from disk,
 			// then don't close the block because that is the WiredList's
@@ -250,7 +248,6 @@ func (s *dbSeries) updateBlocksWithLock() updateBlocksResult {
 				currBlock.ResetRetrievable(start, retriever, metadata)
 			default:
 				// Remove the block and it will be looked up later
-				fmt.Println("evicting should unwire: ", start)
 				s.blocks.RemoveBlockAt(start)
 				currBlock.Close()
 			}
@@ -307,7 +304,6 @@ func (s *dbSeries) Write(
 	annotation []byte,
 ) error {
 	s.Lock()
-	fmt.Println("writing into buffer at time: ", timestamp)
 	err := s.buffer.Write(ctx, timestamp, value, unit, annotation)
 	s.Unlock()
 	return err
@@ -412,7 +408,6 @@ func (s *dbSeries) bufferDrained(newBlock block.DatabaseBlock) {
 		"block_start": newBlock.StartTime().String(),
 		"service":     "statsdex_m3dbnode_test",
 	}).Counter("buffer-drained").Inc(1)
-	fmt.Println("drained block: ", newBlock.StartTime())
 	s.mergeBlockWithLock(s.blocks, newBlock)
 }
 
@@ -431,7 +426,6 @@ func (s *dbSeries) mergeBlockWithLock(
 
 	// We are performing this in a lock, cannot wait for the existing
 	// block potentially to be retrieved from disk, lazily merge the stream.
-	fmt.Println("merging: ", existingBlock.StartTime())
 	existingBlock.Merge(newBlock)
 	// newBlock.Merge(existingBlock)
 	// TODO: This puts it in the wired list which we probably don't want to do....
@@ -480,12 +474,9 @@ func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
 			t := tNano.ToTime()
 			if !t.Before(min) {
 				numBlocksMovedToBuffer++
-				fmt.Println("BOOTSTRAPPING: ", tNano.ToTime())
-				fmt.Println("MIN: ", min)
 				if err := s.buffer.Bootstrap(block); err != nil {
 					multiErr = multiErr.Add(s.newBootstrapBlockError(block, err))
 				}
-				fmt.Println("evicting during bootstrap: ", t)
 				blocks.RemoveBlockAt(t)
 				continue
 			}

@@ -143,7 +143,6 @@ func (s *commitLogSource) Read(
 	shardsTimeRanges result.ShardTimeRanges,
 	_ bootstrap.RunOptions,
 ) (result.BootstrapResult, error) {
-	fmt.Println(shardsTimeRanges.MinMax())
 	if shardsTimeRanges.IsEmpty() {
 		return nil, nil
 	}

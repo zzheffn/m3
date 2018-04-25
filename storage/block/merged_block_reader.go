@@ -83,7 +83,6 @@ func (r *dbMergedBlockReader) mergedReader() (xio.SegmentReader, error) {
 	for multiIter.Next() {
 		dp, unit, annotation := multiIter.Current()
 		err := r.encoder.Encode(dp, unit, annotation)
-		fmt.Println("in merge: ", dp)
 		if err != nil {
 			r.encoder.Close()
 			r.err = err
