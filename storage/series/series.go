@@ -448,6 +448,7 @@ func (s *dbSeries) Bootstrap(bootstrappedBlocks block.DatabaseSeriesBlocks) erro
 	}
 	if bootstrappedBlocks == nil {
 		s.bs = bootstrapped
+		return nil
 	}
 
 	s.bs = bootstrapping
