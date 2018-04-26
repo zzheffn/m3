@@ -420,16 +420,21 @@ func (s *dbSeries) mergeBlockWithLock(
 	// If we don't have an existing block just insert the new block.
 	existingBlock, ok := blocks.BlockAt(blockStart)
 	if !ok {
-		s.addBlockWithLock(blocks, newBlock)
+		s.addBlockWithLock(newBlock)
 		return
 	}
 
+	// We are performing this in a lock, cannot wait for the existing
+	// block potentially to be retrieved from disk, lazily merge the stream.
 	existingBlock.Merge(newBlock)
+	// newBlock.Merge(existingBlock)
+	// TODO: This puts it in the wired list which we probably don't want to do....
+	// s.addBlockWithLock(newBlock)
 }
 
-func (s *dbSeries) addBlockWithLock(blocks block.DatabaseSeriesBlocks, b block.DatabaseBlock) {
+func (s *dbSeries) addBlockWithLock(b block.DatabaseBlock) {
 	b.SetOnEvictedFromWiredList(s.blockOnEvictedFromWiredList)
-	blocks.AddBlock(b)
+	s.blocks.AddBlock(b)
 }
 
 // NB(xichen): we are holding a big lock here to drain the in-memory buffer.
@@ -462,12 +467,10 @@ func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
 
 		// If any received data falls within the buffer then we emplace it there
 		min, _ := s.buffer.MinMax()
-		numLoops := int64(0)
 		numBlocksMovedToBuffer := int64(0)
 		numBlocksIgnored := int64(0)
 		numBlocksMerged := int64(0)
 		for tNano, block := range blocks.AllBlocks() {
-			numLoops++
 			t := tNano.ToTime()
 			if !t.Before(min) {
 				numBlocksMovedToBuffer++
@@ -484,14 +487,12 @@ func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
 		// already drained
 		for _, existingBlock := range existingBlocks.AllBlocks() {
 			s.mergeBlockWithLock(blocks, existingBlock)
-			numBlocksMerged++
 		}
-
 		scope := s.opts.InstrumentOptions().MetricsScope().SubScope("series-bootstrap")
-		scope.Counter("num-loops").Inc(numLoops)
 		scope.Counter("blocks-to-buffer").Inc(numBlocksMovedToBuffer)
 		scope.Counter("blocks-ignored").Inc(numBlocksIgnored)
 		scope.Counter("blocks-merged").Inc(numBlocksMerged)
+		numBlocksMerged = int64(blocks.Len())
 	}
 
 	s.blocks = blocks
@@ -533,7 +534,7 @@ func (s *dbSeries) OnRetrieveBlock(
 	b.SetLastReadTime(s.now())
 
 	// If we retrieved this from disk then we directly emplace it
-	s.addBlockWithLock(s.blocks, b)
+	s.addBlockWithLock(b)
 
 	if list := s.opts.DatabaseBlockOptions().WiredList(); list != nil {
 		// Need to update the WiredList so blocks that were read from disk
