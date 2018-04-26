@@ -23,6 +23,7 @@
 package integration
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -193,6 +194,151 @@ func TestReproduceBug(t *testing.T) {
 	// observedSeriesMaps2 := testSetupToSeriesMaps(t, setup, ns2, metadatasByShard2)
 	// verifySeriesMapsEqual(t, emptySeriesMaps, observedSeriesMaps2)
 
+}
+
+func TestBootstrapAfterBufferRotationWithEmptyMerge(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow() // Just skip if we're doing a short run
+	}
+
+	// Test setup
+	var (
+		ropts = retention.NewOptions().
+			SetRetentionPeriod(12 * time.Hour).
+			SetBufferPast(5 * time.Minute).
+			SetBufferFuture(5 * time.Minute)
+		blockSize = ropts.BlockSize()
+	)
+	ns1, err := namespace.NewMetadata(testNamespaces[0], namespace.NewOptions().SetRetentionOptions(ropts))
+	require.NoError(t, err)
+	opts := newTestOptions(t).
+		SetCommitLogRetentionPeriod(ropts.RetentionPeriod()).
+		SetCommitLogBlockSize(blockSize).
+		SetNamespaces([]namespace.Metadata{ns1})
+
+	setup, err := newTestSetup(t, opts, nil)
+	require.NoError(t, err)
+	defer setup.close()
+
+	// Setup the commitlog and write a single datapoint into it one second into the
+	// active block.
+	commitLogOpts := setup.storageOpts.CommitLogOptions().
+		SetFlushInterval(defaultIntegrationTestFlushInterval)
+	setup.storageOpts = setup.storageOpts.SetCommitLogOptions(commitLogOpts)
+
+	testID := ident.StringID("foo")
+	now := setup.getNowFn().Truncate(blockSize)
+	setup.setNowFn(now)
+	startTime := now
+	commitlogWrite := ts.Datapoint{
+		Timestamp: startTime.Add(-blockSize),
+		Value:     1,
+	}
+	seriesMaps := map[xtime.UnixNano]generate.SeriesBlock{
+		xtime.ToUnixNano(commitlogWrite.Timestamp): generate.SeriesBlock{
+			generate.Series{
+				ID:   testID,
+				Data: []ts.Datapoint{commitlogWrite},
+			},
+		},
+	}
+	fmt.Println("commitlog write: ", commitlogWrite)
+	writeCommitLogDataWithPredicate(t, setup, commitLogOpts, seriesMaps, ns1, func(_ ts.Datapoint) bool {
+		return true
+	})
+
+	// TODO: Do I need this line?
+	setup.setNowFn(now.Add(ropts.BufferPast()).Add(time.Second))
+
+	// Setup bootstrappers - We order them such that the custom test bootstrapper runs first
+	// which does not bootstrap any data, but simply waits until it is signaled, allowing us
+	// to delay bootstrap completion until after series buffer drain/rotation. After the custom
+	// test bootstrapper completes, the commitlog bootstrapper will run.
+	bootstrapOpts := newDefaulTestResultOptions(setup.storageOpts)
+	bootstrapCommitlogOpts := bcl.NewOptions().
+		SetResultOptions(bootstrapOpts).
+		SetCommitLogOptions(commitLogOpts)
+	inspection, err := bcl.InspectFilesystem(commitLogOpts.FilesystemOptions())
+	require.NoError(t, err)
+	commitlogBootstrapper, err := bcl.NewCommitLogBootstrapper(bootstrapCommitlogOpts, inspection, nil)
+	require.NoError(t, err)
+
+	// Setup the test bootstrapper to only return success when a signal is sent.
+	signalCh := make(chan struct{})
+	test := NewTestBootstrapperSource(TestBootstrapperOptions{
+		read: func(_ namespace.Metadata, shardTimeRanges result.ShardTimeRanges, _ bootstrap.RunOptions) (result.BootstrapResult, error) {
+			<-signalCh
+			result := result.NewBootstrapResult()
+			// Mark all as unfulfilled so the commitlog bootstrapper will be called after
+			result.SetUnfulfilled(shardTimeRanges)
+			return result, nil
+		},
+	}, bootstrapOpts, commitlogBootstrapper)
+
+	process := bootstrap.NewProcess(test, bootstrapOpts)
+	setup.storageOpts = setup.storageOpts.SetBootstrapProcess(process)
+
+	// Start a background goroutine which will wait until the server is started,
+	// issue a single write into the active block, change the time to be far enough
+	// into the *next* block that the series buffer for the previously active block
+	// can be rotated, and then signals the test bootstrapper that it can proceed.
+	var memoryWrite ts.Datapoint
+	go func() {
+		// Wait for server to start
+		// TODO: Better way to do this?
+		setup.sleepFor10xTickMinimumInterval()
+		now = now.Add(blockSize)
+		setup.setNowFn(now)
+		memoryWrite = ts.Datapoint{
+			Timestamp: now.Add(-10 * time.Second),
+			Value:     2,
+		}
+
+		// Issue the write (still in the same block as the commitlog write).
+		err := setup.writeBatch(ns1.ID(), generate.SeriesBlock{
+			generate.Series{
+				ID:   ident.StringID("foo"),
+				Data: []ts.Datapoint{memoryWrite},
+			}})
+		if err != nil {
+			panic(err)
+		}
+
+		// Change the time far enough into the next block that a series buffer
+		// rotation will occur for the previously active block.
+		now = now.Add(ropts.BufferPast()).Add(time.Second)
+		setup.setNowFn(now)
+		setup.sleepFor10xTickMinimumInterval()
+
+		// Twice because the test bootstrapper will need to run two times, once to fulfill
+		// all historical blocks and once to fulfill the active block.
+		signalCh <- struct{}{}
+		signalCh <- struct{}{}
+	}()
+	require.NoError(t, setup.startServer())
+
+	defer func() {
+		require.NoError(t, setup.stopServer())
+	}()
+
+	// Verify in-memory data match what we expect - both commitlog and memory write
+	// should be present.
+	expectedSeriesMaps := map[xtime.UnixNano]generate.SeriesBlock{
+		xtime.ToUnixNano(memoryWrite.Timestamp.Truncate(blockSize)): generate.SeriesBlock{
+			generate.Series{
+				ID:   testID,
+				Data: []ts.Datapoint{memoryWrite},
+			},
+		},
+	}
+
+	metadatasByShard := testSetupMetadatas(t, setup, testNamespaces[0], startTime, startTime.Add(blockSize))
+	observedSeriesMaps := testSetupToSeriesMaps(t, setup, ns1, metadatasByShard)
+	for key, val := range observedSeriesMaps {
+		fmt.Println("key: ", key)
+		fmt.Println("val: ", val)
+	}
+	verifySeriesMapsEqual(t, expectedSeriesMaps, observedSeriesMaps)
 }
 
 func NewTestBootstrapperSource(opts TestBootstrapperOptions, resultOpts result.Options, next bootstrap.Bootstrapper) TestBootstrapperSource {
