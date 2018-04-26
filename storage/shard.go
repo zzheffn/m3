@@ -1688,10 +1688,10 @@ func (s *dbShard) Flush(
 	s.forEachShardEntry(func(entry *dbShardEntry) bool {
 		curr := entry.series
 		// TODO: Temp hack to test commitlog bootstrapping theory
-		// _, err := curr.Tick()
-		// if err != nil && err != series.ErrSeriesAllDatapointsExpired {
-		// 	multiErr = multiErr.Add(err)
-		// }
+		_, err := curr.Tick()
+		if err != nil && err != series.ErrSeriesAllDatapointsExpired {
+			multiErr = multiErr.Add(err)
+		}
 		// Use a temporary context here so the stream readers can be returned to
 		// pool after we finish fetching flushing the series
 		tmpCtx.Reset()

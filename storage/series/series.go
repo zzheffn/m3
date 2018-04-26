@@ -467,10 +467,12 @@ func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
 
 		// If any received data falls within the buffer then we emplace it there
 		min, _ := s.buffer.MinMax()
+		numLoops := int64(0)
 		numBlocksMovedToBuffer := int64(0)
 		numBlocksIgnored := int64(0)
 		numBlocksMerged := int64(0)
 		for tNano, block := range blocks.AllBlocks() {
+			numLoops++
 			t := tNano.ToTime()
 			if !t.Before(min) {
 				numBlocksMovedToBuffer++
@@ -487,12 +489,14 @@ func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
 		// already drained
 		for _, existingBlock := range existingBlocks.AllBlocks() {
 			s.mergeBlockWithLock(blocks, existingBlock)
+			numBlocksMerged++
 		}
+
 		scope := s.opts.InstrumentOptions().MetricsScope().SubScope("series-bootstrap")
+		scope.Counter("num-loops").Inc(numLoops)
 		scope.Counter("blocks-to-buffer").Inc(numBlocksMovedToBuffer)
 		scope.Counter("blocks-ignored").Inc(numBlocksIgnored)
 		scope.Counter("blocks-merged").Inc(numBlocksMerged)
-		numBlocksMerged = int64(blocks.Len())
 	}
 
 	s.blocks = blocks
