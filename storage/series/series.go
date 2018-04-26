@@ -408,28 +408,22 @@ func (s *dbSeries) bufferDrained(newBlock block.DatabaseBlock) {
 		"block_start": newBlock.StartTime().String(),
 		"service":     "statsdex_m3dbnode_test",
 	}).Counter("buffer-drained").Inc(1)
-	s.mergeBlockWithLock(s.blocks, newBlock)
+	s.mergeBlockWithLock(newBlock)
 }
 
-func (s *dbSeries) mergeBlockWithLock(
-	blocks block.DatabaseSeriesBlocks,
-	newBlock block.DatabaseBlock,
-) {
+func (s *dbSeries) mergeBlockWithLock(newBlock block.DatabaseBlock) {
 	blockStart := newBlock.StartTime()
 
 	// If we don't have an existing block just insert the new block.
-	existingBlock, ok := blocks.BlockAt(blockStart)
+	existingBlock, ok := s.blocks.BlockAt(blockStart)
 	if !ok {
+		// No existing block, we're safe to just add it.
 		s.addBlockWithLock(newBlock)
 		return
 	}
 
-	// We are performing this in a lock, cannot wait for the existing
-	// block potentially to be retrieved from disk, lazily merge the stream.
+	// There is already an existing block, perform a (lazy) merge.
 	existingBlock.Merge(newBlock)
-	// newBlock.Merge(existingBlock)
-	// TODO: This puts it in the wired list which we probably don't want to do....
-	// s.addBlockWithLock(newBlock)
 }
 
 func (s *dbSeries) addBlockWithLock(b block.DatabaseBlock) {
@@ -442,7 +436,7 @@ func (s *dbSeries) addBlockWithLock(b block.DatabaseBlock) {
 // data in memory during bootstrapping. If that becomes a problem, we could
 // bootstrap in batches, e.g., drain and reset the buffer, drain the streams,
 // then repeat, until len(s.pendingBootstrap) is below a given threshold.
-func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
+func (s *dbSeries) Bootstrap(bootstrappedBlocks block.DatabaseSeriesBlocks) error {
 	s.Lock()
 	defer s.Unlock()
 
@@ -452,46 +446,39 @@ func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
 	if s.bs == bootstrapping {
 		return errSeriesIsBootstrapping
 	}
-
 	s.bs = bootstrapping
-	existingBlocks := s.blocks
 
+	// Debugging
+	numLoops := int64(0)
+	numBlocksMovedToBuffer := int64(0)
+	numBlocksIgnored := int64(0)
+	numBlocksMerged := int64(0)
+
+	// Request the in-memory buffer to drain and reset so that the start times
+	// of the blocks in the buckets are set to the latest valid times
+	s.buffer.DrainAndReset()
+	min, _ := s.buffer.MinMax()
 	multiErr := xerrors.NewMultiError()
-	if blocks == nil {
-		// If no data to bootstrap from then fallback to the empty blocks map
-		blocks = existingBlocks
-	} else {
-		// Request the in-memory buffer to drain and reset so that the start times
-		// of the blocks in the buckets are set to the latest valid times
-		s.buffer.DrainAndReset()
-
-		// If any received data falls within the buffer then we emplace it there
-		min, _ := s.buffer.MinMax()
-		numLoops := int64(0)
-		numBlocksMovedToBuffer := int64(0)
-		numBlocksIgnored := int64(0)
-		numBlocksMerged := int64(0)
-		for tNano, block := range blocks.AllBlocks() {
-			numLoops++
-			t := tNano.ToTime()
-			if !t.Before(min) {
-				numBlocksMovedToBuffer++
-				if err := s.buffer.Bootstrap(block); err != nil {
-					multiErr = multiErr.Add(s.newBootstrapBlockError(block, err))
-				}
-				blocks.RemoveBlockAt(t)
-				continue
+	for tNano, block := range bootstrappedBlocks.AllBlocks() {
+		numLoops++
+		t := tNano.ToTime()
+		// If there is a writable, undrained series buffer bucket then store the block
+		// there and it will be merged / drained as part of the usual lifecycle.
+		if !t.Before(min) {
+			numBlocksMovedToBuffer++
+			if err := s.buffer.Bootstrap(block); err != nil {
+				multiErr = multiErr.Add(s.newBootstrapBlockError(block, err))
 			}
-			numBlocksIgnored++
+			continue
 		}
 
-		// If we're overwriting the blocks then merge any existing blocks
-		// already drained
-		for _, existingBlock := range existingBlocks.AllBlocks() {
-			s.mergeBlockWithLock(blocks, existingBlock)
-			numBlocksMerged++
-		}
+		// If we're unable to put the blocks in an active series buffer bucket, then store them
+		// in the series block, merging with any existing blocks if necessary.
+		// TODO: Explain why there could be an existing block
+		s.mergeBlockWithLock(block)
+		numBlocksMerged++
 
+		// Debugging
 		scope := s.opts.InstrumentOptions().MetricsScope().SubScope("series-bootstrap")
 		scope.Counter("num-loops").Inc(numLoops)
 		scope.Counter("blocks-to-buffer").Inc(numBlocksMovedToBuffer)
@@ -499,9 +486,7 @@ func (s *dbSeries) Bootstrap(blocks block.DatabaseSeriesBlocks) error {
 		scope.Counter("blocks-merged").Inc(numBlocksMerged)
 	}
 
-	s.blocks = blocks
 	s.bs = bootstrapped
-
 	return multiErr.FinalError()
 }
 
