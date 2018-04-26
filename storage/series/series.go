@@ -446,11 +446,11 @@ func (s *dbSeries) Bootstrap(bootstrappedBlocks block.DatabaseSeriesBlocks) erro
 	if s.bs == bootstrapping {
 		return errSeriesIsBootstrapping
 	}
-	s.bs = bootstrapping
-
 	if bootstrappedBlocks == nil {
 		return nil
 	}
+
+	s.bs = bootstrapping
 
 	// Debugging
 	numLoops := int64(0)
