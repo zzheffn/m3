@@ -482,14 +482,14 @@ func (s *dbSeries) Bootstrap(bootstrappedBlocks block.DatabaseSeriesBlocks) erro
 		// TODO: Explain why there could be an existing block
 		s.mergeBlockWithLock(block)
 		numBlocksMerged++
-
-		// Debugging
-		scope := s.opts.InstrumentOptions().MetricsScope().SubScope("series-bootstrap")
-		scope.Counter("num-loops").Inc(numLoops)
-		scope.Counter("blocks-to-buffer").Inc(numBlocksMovedToBuffer)
-		scope.Counter("blocks-ignored").Inc(numBlocksIgnored)
-		scope.Counter("blocks-merged").Inc(numBlocksMerged)
 	}
+
+	// Debugging
+	scope := s.opts.InstrumentOptions().MetricsScope().SubScope("series-bootstrap")
+	scope.Counter("num-loops").Inc(numLoops)
+	scope.Counter("blocks-to-buffer").Inc(numBlocksMovedToBuffer)
+	scope.Counter("blocks-ignored").Inc(numBlocksIgnored)
+	scope.Counter("blocks-merged").Inc(numBlocksMerged)
 
 	s.bs = bootstrapped
 	return multiErr.FinalError()
