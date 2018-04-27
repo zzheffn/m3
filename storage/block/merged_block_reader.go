@@ -102,8 +102,10 @@ func (r *dbMergedBlockReader) mergedReader() (xio.SegmentReader, error) {
 
 	// Release references to the existing streams
 	for i := range r.streams {
-		r.streams[i].Finalize()
-		r.streams[i] = nil
+		if r.streams[i].stream != nil && r.streams[i].finalize {
+			r.streams[i].stream.Finalize()
+		}
+		r.streams[i].stream = nil
 	}
 	for i := range r.readers {
 		r.readers[i] = nil
@@ -140,10 +142,10 @@ func (r *dbMergedBlockReader) Finalize() {
 	r.blockStart = time.Time{}
 
 	for i := range r.streams {
-		if r.streams[i] != nil && r.finalize[i] {
-			r.streams[i].Finalize()
+		if r.streams[i].stream != nil && r.streams[i].finalize {
+			r.streams[i].stream.Finalize()
 		}
-		r.streams[i] = nil
+		r.streams[i].stream = nil
 	}
 	for i := range r.readers {
 		if r.readers[i] != nil {
