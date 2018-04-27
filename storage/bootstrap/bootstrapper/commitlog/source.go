@@ -951,11 +951,6 @@ func (s *commitLogSource) mergeSeries(
 		numErrs++
 	}
 
-	// Automatically returns iter to the pool
-	iter.Close()
-	encoders.close()
-	readers.close()
-
 	if err != nil {
 		// TODO: ?
 		panic(err)
@@ -963,6 +958,12 @@ func (s *commitLogSource) mergeSeries(
 
 	pooledBlock := blocksPool.Get()
 	pooledBlock.Reset(start, enc.Discard())
+
+	// Cleanup
+	iter.Close()
+	encoders.close()
+	readers.close()
+
 	return pooledBlock, numEmptyErrs, numErrs
 }
 
