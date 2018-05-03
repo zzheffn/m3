@@ -430,7 +430,10 @@ func (s *dbSeries) mergeBlockWithLock(newBlock block.DatabaseBlock) {
 	}
 
 	// There is already an existing block, perform a (lazy) merge.
-	existingBlock.Merge(newBlock)
+	err := existingBlock.Merge(newBlock)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (s *dbSeries) addBlockWithLock(b block.DatabaseBlock) {
