@@ -240,10 +240,14 @@ func (s *dbSeries) updateBlocksWithLock() updateBlocksResult {
 				// NB(r): Each block needs shared ref to the series ID
 				// or else each block needs to have a copy of the ID
 				id := s.id
+				checksum, err := currBlock.Checksum()
+				if err != nil {
+					panic(err)
+				}
 				metadata := block.RetrievableBlockMetadata{
 					ID:       id,
 					Length:   currBlock.Len(),
-					Checksum: currBlock.Checksum(),
+					Checksum: checksum,
 				}
 				currBlock.ResetRetrievable(start, retriever, metadata)
 			default:
@@ -369,7 +373,10 @@ func (s *dbSeries) FetchBlocksMetadata(
 			size = int64(b.Len())
 		}
 		if opts.IncludeChecksums {
-			v := b.Checksum()
+			v, err := b.Checksum()
+			if err != nil {
+				panic(err)
+			}
 			checksum = &v
 		}
 		if opts.IncludeLastRead {
@@ -621,7 +628,11 @@ func (s *dbSeries) Flush(
 	if err != nil {
 		return err
 	}
-	return persistFn(s.id, segment, b.Checksum())
+	checksum, err := b.Checksum()
+	if err != nil {
+		return err
+	}
+	return persistFn(s.id, segment, checksum)
 }
 
 func (s *dbSeries) Snapshot(
