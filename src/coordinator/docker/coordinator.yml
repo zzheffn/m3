@@ -3,7 +3,8 @@ client:
     static:
       listenAddress: 0.0.0.0:9000
       topology:
-          shards: 3
+          shards: 64
+          replicas: 3
           hosts:
             - hostID: m3db_server_1
               listenAddress: "0.0.0.0:9000"
