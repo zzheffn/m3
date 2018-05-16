@@ -51,6 +51,8 @@ func (b *Series) StartTime() time.Time { return b.startTime }
 // Name returns the name of the timeseries block
 func (b *Series) Name() string { return b.name }
 
+func (b *Series) Values() Values { return b.vals }
+
 // Len returns the number of values in the time series. Used for aggregation
 func (b *Series) Len() int { return b.vals.Len() }
 

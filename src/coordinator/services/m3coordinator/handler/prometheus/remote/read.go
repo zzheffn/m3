@@ -147,7 +147,7 @@ func (h *PromReadHandler) read(reqCtx context.Context, w http.ResponseWriter, r 
 		}
 
 		promRes := storage.FetchResultToPromResult(result.FetchResult)
-		fmt.Println("read response: ", result.FetchResult.SeriesList[0].vals, result.FetchResult.SeriesList[0].Tags)
+		fmt.Println("read response: ", result.FetchResult.SeriesList[0].Values(), result.FetchResult.SeriesList[0].Tags)
 		promResults = append(promResults, promRes)
 	}
 
