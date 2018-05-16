@@ -96,6 +96,7 @@ func FetchQueryToM3Query(fetchQuery *FetchQuery) (index.Query, error) {
 	}
 
 	q := idx.NewConjunctionQuery(idxQueries...)
+	fmt.Println("idx query: ", q.SearchQuery().String())
 	return index.Query{Query: q}, nil
 }
 

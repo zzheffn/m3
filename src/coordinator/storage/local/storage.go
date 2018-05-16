@@ -61,7 +61,7 @@ func (s *localStorage) Fetch(ctx context.Context, query *storage.FetchQuery, opt
 	default:
 	}
 
-	fmt.Println("m3 fetch query: ", query)
+	fmt.Println("m3 fetch query: ", query.TagMatchers)
 	m3query, err := storage.FetchQueryToM3Query(query)
 	if err != nil {
 		return nil, err
