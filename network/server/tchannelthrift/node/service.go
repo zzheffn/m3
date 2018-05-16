@@ -924,6 +924,8 @@ func (s *service) WriteBatchRaw(tctx thrift.Context, req *rpc.WriteBatchRawReque
 		return batchErrs
 	}
 
+	fmt.Println("WriteBatchRaw success")
+
 	return nil
 }
 
@@ -986,6 +988,8 @@ func (s *service) WriteTaggedBatchRaw(tctx thrift.Context, req *rpc.WriteTaggedB
 		batchErrs.Errors = errs
 		return batchErrs
 	}
+
+	fmt.Println("WriteTaggedBatchRaw success")
 
 	return nil
 }

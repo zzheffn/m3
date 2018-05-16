@@ -80,6 +80,8 @@ func (h *PromReadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Results: result,
 	}
 
+	fmt.Println("read response: ", resp)
+
 	data, err := proto.Marshal(resp)
 	if err != nil {
 		logger.Error("unable to marshal read results to protobuf", zap.Any("error", err))
@@ -125,6 +127,8 @@ func (h *PromReadHandler) read(reqCtx context.Context, w http.ResponseWriter, r 
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Println("query: ", query)
 
 	// Results is closed by execute
 	results := make(chan *storage.QueryResult)
