@@ -56,7 +56,9 @@ func (h *PromReadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.WithContext(ctx)
 
+	fmt.Println("http req: ", r)
 	req, rErr := h.parseRequest(r)
+	fmt.Println("parsed req: ", req)
 
 	if rErr != nil {
 		handler.Error(w, rErr.Error(), rErr.Code())
@@ -123,6 +125,7 @@ func (h *PromReadHandler) read(reqCtx context.Context, w http.ResponseWriter, r 
 	ctx, cancel := context.WithTimeout(reqCtx, params.Timeout)
 	defer cancel()
 	promQuery := r.Queries[0]
+	fmt.Println("prom query: ", promQuery)
 	query, err := storage.PromReadQueryToM3(promQuery)
 	if err != nil {
 		return nil, err
