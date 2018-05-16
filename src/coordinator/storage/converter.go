@@ -75,7 +75,6 @@ func PromReadQueryToM3(query *prompb.Query) (*FetchQuery, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("m3 tags: ", tagMatchers)
 
 	return &FetchQuery{
 		TagMatchers: tagMatchers,
@@ -90,7 +89,6 @@ func PromMatchersToM3(matchers []*prompb.LabelMatcher) (models.Matchers, error) 
 	var err error
 	for idx, matcher := range matchers {
 		tagMatchers[idx], err = PromMatcherToM3(matcher)
-		fmt.Println(tagMatchers[idx].String())
 		if err != nil {
 			return nil, err
 		}
@@ -106,7 +104,6 @@ func PromMatcherToM3(matcher *prompb.LabelMatcher) (*models.Matcher, error) {
 		return nil, err
 	}
 
-	fmt.Println("match type: ", matchType.String(), "name: ", matcher.Name, "value: ", matcher.Value)
 	return models.NewMatcher(matchType, matcher.Name, matcher.Value)
 }
 

@@ -125,13 +125,10 @@ func (h *PromReadHandler) read(reqCtx context.Context, w http.ResponseWriter, r 
 	ctx, cancel := context.WithTimeout(reqCtx, params.Timeout)
 	defer cancel()
 	promQuery := r.Queries[0]
-	fmt.Println("prom query: ", promQuery)
 	query, err := storage.PromReadQueryToM3(promQuery)
 	if err != nil {
 		return nil, err
 	}
-
-	fmt.Println("query: ", query.TagMatchers)
 
 	// Results is closed by execute
 	results := make(chan *storage.QueryResult)

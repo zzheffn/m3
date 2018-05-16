@@ -22,6 +22,7 @@ package local
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/m3db/m3db/src/coordinator/errors"
@@ -60,10 +61,12 @@ func (s *localStorage) Fetch(ctx context.Context, query *storage.FetchQuery, opt
 	default:
 	}
 
+	fmt.Println("m3 fetch query: ", query)
 	m3query, err := storage.FetchQueryToM3Query(query)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("actual m3 query: ", m3query)
 
 	opts := storage.FetchOptionsToM3Options(options, query)
 	// TODO (nikunj): Handle second return param
@@ -71,6 +74,7 @@ func (s *localStorage) Fetch(ctx context.Context, query *storage.FetchQuery, opt
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println(iters)
 
 	defer iters.Close()
 
