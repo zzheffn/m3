@@ -1189,6 +1189,7 @@ func (s *session) fetchTaggedAttemptWithRLock(
 		nsClone.Finalize()
 		return nil, xerrors.NewNonRetryableError(err)
 	}
+	fmt.Println("rpc: ", req.String())
 
 	var (
 		topoMap    = s.state.topoMap
