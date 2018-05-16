@@ -23,6 +23,7 @@ package local
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/m3db/m3db/src/coordinator/errors"
@@ -180,7 +181,9 @@ func (w *writeRequest) Process(ctx context.Context) error {
 	common := w.writeRequestCommon
 	store := common.store
 	id := ident.StringID(common.id)
-	fmt.Println("write: ", id, w.timestamp, w.value)
+	if strings.Contains(id, "up") {
+		fmt.Println("write: ", id, w.timestamp, w.value)
+	}
 	return store.session.WriteTagged(store.namespace, id, common.tagIterator, w.timestamp, w.value, common.unit, common.annotation)
 }
 

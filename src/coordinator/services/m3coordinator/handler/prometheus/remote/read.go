@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/m3db/m3db/src/coordinator/executor"
 	"github.com/m3db/m3db/src/coordinator/generated/proto/prompb"
@@ -147,7 +148,9 @@ func (h *PromReadHandler) read(reqCtx context.Context, w http.ResponseWriter, r 
 		}
 
 		promRes := storage.FetchResultToPromResult(result.FetchResult)
-		fmt.Println("read response: ", result.FetchResult.SeriesList[0].Values(), result.FetchResult.SeriesList[0].Tags)
+		if strings.Contains(result.FetchResult.SeriesList[0].Name, "up") {
+			fmt.Println("read response: ", result.FetchResult.SeriesList[0].Values(), result.FetchResult.SeriesList[0].Tags)
+		}
 		promResults = append(promResults, promRes)
 	}
 
