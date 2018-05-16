@@ -131,7 +131,7 @@ func (h *PromReadHandler) read(reqCtx context.Context, w http.ResponseWriter, r 
 		return nil, err
 	}
 
-	fmt.Println("query: ", query)
+	fmt.Println("query: ", query.TagMatchers)
 
 	// Results is closed by execute
 	results := make(chan *storage.QueryResult)
