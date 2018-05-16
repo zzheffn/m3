@@ -148,7 +148,7 @@ func (h *PromReadHandler) read(reqCtx context.Context, w http.ResponseWriter, r 
 		}
 
 		promRes := storage.FetchResultToPromResult(result.FetchResult)
-		if strings.Contains(result.FetchResult.SeriesList[0].Name, "up") {
+		if strings.Contains(result.FetchResult.SeriesList[0].Name(), "up") {
 			fmt.Println("read response: ", result.FetchResult.SeriesList[0].Values(), result.FetchResult.SeriesList[0].Tags)
 		}
 		promResults = append(promResults, promRes)
