@@ -181,9 +181,9 @@ func (w *writeRequest) Process(ctx context.Context) error {
 	common := w.writeRequestCommon
 	store := common.store
 	id := ident.StringID(common.id)
-	if strings.Contains(id.String(), "up") {
-		fmt.Println("write: ", id, w.timestamp, w.value)
-	}
+	// if strings.Contains(id.String(), "up") {
+	// 	fmt.Println("write: ", id, w.timestamp, w.value)
+	// }
 	return store.session.WriteTagged(store.namespace, id, common.tagIterator, w.timestamp, w.value, common.unit, common.annotation)
 }
 
