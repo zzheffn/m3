@@ -23,7 +23,6 @@ package local
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/m3db/m3db/src/coordinator/errors"
