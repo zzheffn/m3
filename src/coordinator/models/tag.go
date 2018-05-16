@@ -145,6 +145,6 @@ func (t Tags) ID() string {
 		b += sep
 	}
 
-	fmt.Printf("%s", b)
+	// fmt.Printf("%s", b)
 	return b
 }
