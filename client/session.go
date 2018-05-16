@@ -1189,7 +1189,7 @@ func (s *session) fetchTaggedAttemptWithRLock(
 		nsClone.Finalize()
 		return nil, xerrors.NewNonRetryableError(err)
 	}
-	fmt.Println("rpc: ", req.Query.String())
+	fmt.Println("rpc: ", string(req.Query))
 
 	var (
 		topoMap    = s.state.topoMap
