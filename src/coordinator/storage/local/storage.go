@@ -94,7 +94,7 @@ func (s *localStorage) Fetch(ctx context.Context, query *storage.FetchQuery, opt
 		series := ts.NewSeries(metric.ID, query.Start, datapoints, metric.Tags)
 		seriesList[i] = series
 
-		fmt.Println("read: ", metric.ID, values)
+		// fmt.Println("read: ", metric.ID, values.Values())
 	}
 
 	return &storage.FetchResult{
