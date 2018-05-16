@@ -204,6 +204,6 @@ func setupStorages(logger *zap.Logger, session client.Session, flags *m3config) 
 			stores = append(stores, remote.NewStorage(client))
 		}
 	}
-	fanoutStorage := fanout.NewStorage(stores, filter.LocalOnly, filter.LocalOnly)
+	fanoutStorage := fanout.NewStorage(stores, filter.AllowAll, filter.LocalOnly)
 	return fanoutStorage, cleanup
 }
