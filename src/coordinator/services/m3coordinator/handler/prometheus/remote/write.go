@@ -22,7 +22,6 @@ package remote
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/m3db/m3db/src/coordinator/generated/proto/prompb"
@@ -64,7 +63,7 @@ func (h *PromWriteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		handler.Error(w, err, http.StatusInternalServerError)
 		return
 	}
-	fmt.Println("write success")
+	// fmt.Println("write success")
 }
 
 func (h *PromWriteHandler) parseRequest(r *http.Request) (*prompb.WriteRequest, *handler.ParseError) {
