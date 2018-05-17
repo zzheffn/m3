@@ -74,7 +74,7 @@ func (s *grpcServer) Fetch(message *rpc.FetchMessage, stream rpc.Query_FetchServ
 
 	// Iterate while there are more results
 	for {
-		result, err := s.storage.Fetch(ctx, storeQuery, nil)
+		result, err := s.storage.Fetch(ctx, storeQuery, &storage.FetchOptions{})
 
 		if err != nil {
 			logger.Error("unable to fetch local query", zap.Any("error", err))

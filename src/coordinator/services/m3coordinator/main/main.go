@@ -197,7 +197,7 @@ func setupStorages(logger *zap.Logger, session client.Session, flags *m3config) 
 			server.GracefulStop()
 		}
 		if len(flags.remotes) > 0 {
-			client, err := tsdbRemote.NewGrpcClient(flags.remotes, grpc.WithInsecure())
+			client, err := tsdbRemote.NewGrpcClient(flags.remotes)
 			if err != nil {
 				logger.Fatal("unable to start remote clients for addresses", zap.Any("error", err))
 			}
