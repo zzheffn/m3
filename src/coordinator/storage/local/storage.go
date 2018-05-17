@@ -81,20 +81,13 @@ func (s *localStorage) Fetch(ctx context.Context, query *storage.FetchQuery, opt
 			return nil, err
 		}
 
-		result := make([]ts.Datapoint, 0, initRawFetchAllocSize)
+		datapoints := make(ts.Datapoints, 0, initRawFetchAllocSize)
 		for iter.Next() {
 			dp, _, _ := iter.Current()
-			result = append(result, ts.Datapoint{Timestamp: dp.Timestamp, Value: dp.Value})
+			datapoints = append(datapoints, ts.Datapoint{Timestamp: dp.Timestamp, Value: dp.Value})
 		}
 
-		values := ts.NewValues(ctx, int(s.millisPerStep), len(result))
-
-		// TODO (nikunj): Figure out consolidation here
-		for i, v := range result {
-			values.SetValueAt(i, v.Value)
-		}
-
-		series := ts.NewSeries(ctx, metric.ID, query.Start, values, metric.Tags)
+		series := ts.NewSeries(metric.ID, query.Start, datapoints, metric.Tags)
 		seriesList[i] = series
 	}
 

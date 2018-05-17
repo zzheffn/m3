@@ -45,44 +45,77 @@ func EncodeFetchResult(sResult *storage.FetchResult) *rpc.FetchResult {
 	series := make([]*rpc.Series, len(sResult.SeriesList))
 	for i, result := range sResult.SeriesList {
 		vLen := result.Len()
-		vals := make([]float32, vLen)
+		datapoints := make([]*rpc.Datapoint, vLen)
+		_, fixedRes := result.Values().(ts.FixedResolutionMutableValues)
 		for j := 0; j < vLen; j++ {
-			vals[j] = float32(result.ValueAt(j))
+			dp := result.Values().DatapointAt(j)
+			datapoints[j] = &rpc.Datapoint{
+				Timestamp: fromTime(dp.Timestamp),
+				Value:     dp.Value,
+			}
 		}
+
 		series[i] = &rpc.Series{
-			Name:          result.Name(),
-			Values:        vals,
-			StartTime:     fromTime(result.StartTime()),
-			Tags:          result.Tags,
-			Specification: result.Specification,
-			MillisPerStep: int32(result.MillisPerStep()),
+			Name: result.Name(),
+			Values: &rpc.Datapoints{
+				Datapoints:      datapoints,
+				FixedResolution: fixedRes,
+			},
+			StartTime: fromTime(result.StartTime()),
+			Tags:      result.Tags,
 		}
 	}
 	return &rpc.FetchResult{Series: series}
 }
 
 // DecodeFetchResult decodes fetch results from a GRPC-compatible type.
-func DecodeFetchResult(ctx context.Context, rpcSeries []*rpc.Series) []*ts.Series {
+func DecodeFetchResult(_ context.Context, rpcSeries []*rpc.Series) []*ts.Series {
 	tsSeries := make([]*ts.Series, len(rpcSeries))
 	for i, series := range rpcSeries {
-		tsSeries[i] = decodeTs(ctx, series)
+		tsSeries[i] = decodeTs(series)
 	}
 	return tsSeries
 }
 
-func decodeTs(ctx context.Context, r *rpc.Series) *ts.Series {
-	millis, rValues := int(r.GetMillisPerStep()), r.GetValues()
-	values := ts.NewValues(ctx, millis, len(rValues))
+func decodeTs(r *rpc.Series) *ts.Series {
+	fixedRes := r.Values.FixedResolution
+	var values ts.Values
+	if fixedRes {
+		values = decodeFixedResTs(r)
 
-	for i, v := range rValues {
-		values.SetValueAt(i, float64(v))
+	} else {
+		values = decodeRawTs(r)
 	}
 
 	start, tags := toTime(r.GetStartTime()), models.Tags(r.GetTags())
-
-	series := ts.NewSeries(ctx, r.GetName(), start, values, tags)
-	series.Specification = r.GetSpecification()
+	series := ts.NewSeries(r.GetName(), start, values, tags)
 	return series
+}
+
+func decodeFixedResTs(
+	r *rpc.Series) ts.FixedResolutionMutableValues {
+	startTime := time.Now()
+	if len(r.Values.Datapoints) > 0 {
+		startTime = toTime(r.Values.Datapoints[0].Timestamp)
+	}
+
+	values := ts.NewFixedStepValues(millisPerStep(r.Values), len(r.Values.Datapoints), 0, startTime)
+	for i, v := range r.Values.Datapoints {
+		values.SetValueAt(i, v.Value)
+	}
+	return values
+}
+
+func decodeRawTs(r *rpc.Series) ts.Datapoints {
+	datapoints := make(ts.Datapoints, len(r.Values.Datapoints))
+	for i, v := range r.Values.Datapoints {
+		datapoints[i] = ts.Datapoint{
+			Timestamp: toTime(v.Timestamp),
+			Value:     v.Value,
+		}
+	}
+
+	return datapoints
 }
 
 // EncodeFetchMessage encodes fetch query and fetch options into rpc WriteMessage
@@ -179,11 +212,11 @@ func DecodeWriteMessage(message *rpc.WriteMessage) (*storage.WriteQuery, string)
 }
 
 func decodeWriteQuery(query *rpc.WriteQuery) *storage.WriteQuery {
-	points := make([]*ts.Datapoint, len(query.GetDatapoints()))
+	points := make([]ts.Datapoint, len(query.GetDatapoints()))
 	for i, point := range query.GetDatapoints() {
-		points[i] = &ts.Datapoint{
+		points[i] = ts.Datapoint{
 			Timestamp: toTime(point.GetTimestamp()),
-			Value:     float64(point.GetValue()),
+			Value:     point.GetValue(),
 		}
 	}
 	return &storage.WriteQuery{
@@ -199,7 +232,7 @@ func encodeDatapoints(tsPoints ts.Datapoints) []*rpc.Datapoint {
 	for i, point := range tsPoints {
 		datapoints[i] = &rpc.Datapoint{
 			Timestamp: fromTime(point.Timestamp),
-			Value:     float32(point.Value),
+			Value:     point.Value,
 		}
 	}
 	return datapoints
@@ -209,4 +242,16 @@ func encodeWriteOptions(queryID string) *rpc.WriteOptions {
 	return &rpc.WriteOptions{
 		Id: queryID,
 	}
+}
+
+func millisPerStep(dps *rpc.Datapoints) int {
+	if !dps.FixedResolution {
+		return -1
+	}
+
+	if len(dps.Datapoints) <= 1 {
+		return 0
+	}
+
+	return int(dps.Datapoints[1].Timestamp - dps.Datapoints[0].Timestamp)
 }

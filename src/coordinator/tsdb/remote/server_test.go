@@ -62,16 +62,16 @@ func generateAddress() string {
 	return address
 }
 
-func makeValues(ctx context.Context) ts.Values {
-	vals := ts.NewValues(ctx, mps, len(values))
+func makeValues() ts.Values {
+	vals := ts.NewFixedStepValues(mps, len(values), 0, time.Now())
 	for i, v := range values {
 		vals.SetValueAt(i, v)
 	}
 	return vals
 }
 
-func makeSeries(ctx context.Context) *ts.Series {
-	return ts.NewSeries(ctx, name, startTime, makeValues(ctx), tags)
+func makeSeries() *ts.Series {
+	return ts.NewSeries(name, startTime, makeValues(), tags)
 }
 
 type mockStorage struct {
@@ -95,7 +95,7 @@ func (s *mockStorage) Fetch(ctx context.Context, query *storage.FetchQuery, _ *s
 	hasNext := s.numPages > 0
 	s.mu.Unlock()
 
-	tsSeries := []*ts.Series{makeSeries(ctx)}
+	tsSeries := []*ts.Series{makeSeries()}
 	return &storage.FetchResult{
 		SeriesList: tsSeries,
 		LocalOnly:  false,
@@ -132,7 +132,6 @@ func checkMultipleRemoteFetch(t *testing.T, res *storage.FetchResult, numResults
 		assert.Equal(t, name, s.Name())
 		assert.True(t, startTime.Equal(s.StartTime()))
 		assert.Equal(t, tags, s.Tags)
-		assert.Equal(t, name, s.Specification)
 		assert.Equal(t, len(values), s.Len())
 	}
 }

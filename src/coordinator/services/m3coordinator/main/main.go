@@ -54,7 +54,6 @@ import (
 
 var (
 	namespace      = "metrics"
-	resolution     = time.Minute
 	configLoadOpts = xconfig.Options{
 		DisableUnmarshalStrict: false,
 		DisableValidate:        false,
@@ -69,6 +68,7 @@ type m3config struct {
 	remotes              []string
 	maxConcurrentQueries int
 	queryTimeout         time.Duration
+	resolution         time.Duration
 }
 
 func main() {
@@ -142,6 +142,9 @@ func parseFlags(logger *zap.Logger) *m3config {
 	a.Flag("query.port", "Address to listen on.").
 		Default("0.0.0.0:7201").StringVar(&cfg.listenAddress)
 
+	a.Flag("query.resolution", "Resolution for queries.").
+		Default("15s").DurationVar(&cfg.resolution)
+
 	a.Flag("query.timeout", "Maximum time a query may take before being aborted.").
 		Default("2m").DurationVar(&cfg.queryTimeout)
 
@@ -185,7 +188,7 @@ func startGrpcServer(logger *zap.Logger, storage storage.Storage, flags *m3confi
 // Setup all the storages
 func setupStorages(logger *zap.Logger, session client.Session, flags *m3config) (storage.Storage, func()) {
 	cleanup := func() {}
-	localStorage := local.NewStorage(session, namespace, resolution)
+	localStorage := local.NewStorage(session, namespace, flags.resolution)
 	stores := []storage.Storage{localStorage}
 	if flags.rpcEnabled {
 		logger.Info("rpc enabled")
