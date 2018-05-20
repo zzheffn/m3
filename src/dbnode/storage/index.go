@@ -537,9 +537,9 @@ func (i *nsIndex) Flush(
 		if err := block.AddResults(results); err != nil {
 			return err
 		}
-		// It's now safe to remove the active segment as anything the block
+		// It's now safe to remove the mutable segments as anything the block
 		// held is covered by the owned shards we just read
-		if err := block.EvictActiveSegment(); err != nil {
+		if err := block.EvictMutableSegments(); err != nil {
 			return err
 		}
 	}
@@ -552,8 +552,8 @@ func (i *nsIndex) canFlushBlock(
 	shards []databaseShard,
 ) bool {
 	// Check the block needs flushing because it is sealed and has
-	// an active mutable segment that needs to be evicted from memory
-	if !block.IsSealed() || !block.NeedsEvictActiveSegment() {
+	// any mutable segments that need to be evicted from memory
+	if !block.IsSealed() || !block.NeedsMutableSegmentsEvicted() {
 		return false
 	}
 
