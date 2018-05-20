@@ -47,6 +47,7 @@ import (
 	"github.com/m3db/m3x/resource"
 	xtime "github.com/m3db/m3x/time"
 
+	"github.com/apache/thrift/lib/go/thrift"
 	"github.com/uber-go/tally"
 	"github.com/uber/tchannel-go/thrift"
 )
@@ -930,6 +931,13 @@ func (s *service) WriteBatchRaw(tctx thrift.Context, req *rpc.WriteBatchRawReque
 func (s *service) WriteTaggedBatchRaw(tctx thrift.Context, req *rpc.WriteTaggedBatchRawRequest) error {
 	callStart := s.nowFn()
 	ctx := tchannelthrift.Context(tctx)
+
+	ctx.RegisterFinalizer(resource.FinalizerFn(func() {
+		for _, elem := range req.Elements {
+			thrift.BytesPool.Put(elem.ID)
+			thrift.BytesPool.Put(elem.EncodedTags)
+		}
+	}))
 
 	nsID := s.newID(ctx, req.NameSpace)
 
