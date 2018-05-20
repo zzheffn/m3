@@ -168,10 +168,16 @@ type Block interface {
 	// valid to be called once the block and hence mutable segments are sealed.
 	// It is expected that results have been added to the block that covers any
 	// data the mutable segments should have held at this time.
-	EvictMutableSegments() error
+	EvictMutableSegments() (EvictMutableSegmentResults, error)
 
 	// Close will release any held resources and close the Block.
 	Close() error
+}
+
+// EvictMutableSegmentResults returns statistics about the EvictMutableSegments execution.
+type EvictMutableSegmentResults struct {
+	NumMutableSegments int64
+	NumDocs            int64
 }
 
 // WriteBatchResult returns statistics about the WriteBatch execution.

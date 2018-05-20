@@ -328,8 +328,7 @@ func (b *block) AddResults(
 				if err != nil {
 					// if this happens it means a Mutable segment was marked sealed
 					// in the bootstrappers, this should never happen.
-					err := b.bootstrappingSealedMutableSegmentInvariant(err)
-					multiErr = multiErr.Add(err)
+					multiErr = multiErr.Add(b.bootstrappingSealedMutableSegmentInvariant(err))
 				}
 			}
 		}
@@ -411,6 +410,16 @@ func (b *block) Seal() error {
 	_, err := b.activeSegment.Seal()
 	multiErr = multiErr.Add(err)
 
+	// loop over any added mutable segments and seal them too.
+	for _, group := range b.shardRangesSegments {
+		for _, seg := range group.segments {
+			if unsealed, ok := seg.(segment.MutableSegment); ok {
+				_, err := unsealed.Seal()
+				multiErr = multiErr.Add(err)
+			}
+		}
+	}
+
 	return multiErr.FinalError()
 }
 
@@ -447,19 +456,24 @@ func (b *block) NeedsMutableSegmentsEvicted() bool {
 	return anyMutableSegmentNeedsEviction
 }
 
-func (b *block) EvictMutableSegments() error {
+func (b *block) EvictMutableSegments() (EvictMutableSegmentResults, error) {
+	var results EvictMutableSegmentResults
 	b.Lock()
 	defer b.Unlock()
 	if b.state == blockStateClosed {
-		return errBlockAlreadyClosed
+		return results, errBlockAlreadyClosed
 	}
 	var multiErr xerrors.MultiError
 
+	// close active segment.
 	if b.activeSegment != nil {
+		results.NumMutableSegments++
+		results.NumDocs += b.activeSegment.Size()
 		multiErr = multiErr.Add(b.activeSegment.Close())
 		b.activeSegment = nil
 	}
 
+	// close any other mutable segments too.
 	for _, shardRangeSegments := range b.shardRangesSegments {
 		segments := make([]segment.Segment, 0, len(shardRangeSegments.segments))
 		for _, seg := range shardRangeSegments.segments {
@@ -468,12 +482,14 @@ func (b *block) EvictMutableSegments() error {
 				segments = append(segments, seg)
 				continue
 			}
+			results.NumMutableSegments++
+			results.NumDocs += mutableSeg.Size()
 			multiErr = multiErr.Add(mutableSeg.Close())
 		}
 		shardRangeSegments.segments = segments
 	}
 
-	return multiErr.FinalError()
+	return results, multiErr.FinalError()
 }
 
 func (b *block) Close() error {
@@ -486,12 +502,13 @@ func (b *block) Close() error {
 
 	var multiErr xerrors.MultiError
 
+	// close active segment.
 	if b.activeSegment != nil {
 		multiErr = multiErr.Add(b.activeSegment.Close())
 		b.activeSegment = nil
 	}
 
-	// close any inactiveMutable segments.
+	// close any other added segments too.
 	for _, group := range b.shardRangesSegments {
 		for _, seg := range group.segments {
 			multiErr = multiErr.Add(seg.Close())

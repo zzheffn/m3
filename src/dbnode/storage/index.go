@@ -539,7 +539,7 @@ func (i *nsIndex) Flush(
 		}
 		// It's now safe to remove the mutable segments as anything the block
 		// held is covered by the owned shards we just read
-		if err := block.EvictMutableSegments(); err != nil {
+		if _, err := block.EvictMutableSegments(); err != nil {
 			return err
 		}
 	}
@@ -697,19 +697,6 @@ func (i *nsIndex) flushBlockSegment(
 
 	// Finally flush this segment
 	return preparedPersist.Persist(seg)
-}
-
-func (i *nsIndex) ReplaceBlock(
-	blockStart time.Time,
-	segments []segment.Segment,
-) error {
-	i.state.RLock()
-	defer i.state.RUnlock()
-	if !i.isOpenWithRLock() {
-		return errDbIndexUnableToFlushClosed
-	}
-
-	return fmt.Errorf("not implemented")
 }
 
 func (i *nsIndex) Query(
