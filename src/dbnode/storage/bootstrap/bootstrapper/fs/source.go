@@ -922,6 +922,14 @@ func (s *fileSystemSource) incrementalBootstrapIndexSegment(
 func assertIndexBlockHasSingleMutableSegment(b result.IndexBlock) error {
 	numSegments := len(b.Segments())
 	if numSegments != 1 {
+		for _, currSegment := range b.Segments() {
+			_, ok := currSegment.(segment.MutableSegment)
+			if !ok {
+				fmt.Printf("(assert method): mutable segment size: %d\n", currSegment.Size())
+			} else {
+				fmt.Printf("(assert method): immutable segment size: %d\n", currSegment.Size())
+			}
+		}
 		return fmt.Errorf("expected single segment, but found: %d", numSegments)
 	}
 	_, ok := b.Segments()[0].(segment.MutableSegment)

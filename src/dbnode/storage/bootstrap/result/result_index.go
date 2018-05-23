@@ -94,9 +94,9 @@ func (r IndexResults) Add(block IndexBlock) {
 		for _, currSegment := range r[blockStart].segments {
 			_, ok := currSegment.(segment.MutableSegment)
 			if !ok {
-				fmt.Printf("mutable segment size: %d\n", currSegment.Size())
+				fmt.Printf("(Add method): mutable segment size: %d\n", currSegment.Size())
 			} else {
-				fmt.Printf("immutable segment size: %d\n", currSegment.Size())
+				fmt.Printf("(Add method): immutable segment size: %d\n", currSegment.Size())
 			}
 		}
 	}
@@ -142,9 +142,9 @@ func (r IndexResults) GetOrAddSegment(
 		for _, currSegment := range block.Segments() {
 			_, ok := currSegment.(segment.MutableSegment)
 			if !ok {
-				fmt.Printf("mutable segment size: %d\n", currSegment.Size())
+				fmt.Printf("(GetOrAddSegment method): mutable segment size: %d\n", currSegment.Size())
 			} else {
-				fmt.Printf("immutable segment size: %d\n", currSegment.Size())
+				fmt.Printf("(GetOrAddSegment method): immutable segment size: %d\n", currSegment.Size())
 			}
 		}
 	}
