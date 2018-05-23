@@ -1175,6 +1175,7 @@ func (s *fileSystemSource) bootstrapFromIndexPersistedBlocks(
 		// as we've already passed the ranges fulfilled to the block that
 		// we place in the IndexResuts with the call to Add(...)
 		res.result.index.Add(indexBlock, nil)
+		s.log.Infof("added FST blockStart: %d", indexBlockStart.Unix())
 		res.fulfilled.AddRanges(segmentsFulfilled)
 	}
 
