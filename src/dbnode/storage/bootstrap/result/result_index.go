@@ -124,7 +124,7 @@ func (r IndexResults) GetOrAddSegment(
 		if mutable, ok := seg.(segment.MutableSegment); ok {
 			return mutable, nil
 		}
-		fmt.Printf("encountered immutable segment for blockStart: %d , will have to allocate and merge", t.Unix())
+		fmt.Printf("encountered immutable segment for blockStart: %d , will have to allocate and merge \n", t.Unix())
 	}
 
 	alloc := opts.IndexMutableSegmentAllocator()
