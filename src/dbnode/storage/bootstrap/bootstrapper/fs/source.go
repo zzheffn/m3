@@ -567,6 +567,10 @@ func (s *fileSystemSource) loadShardReadersDataIntoShardResult(
 				shardResult = runResult.getOrAddDataShardResult(shard, capacity, ropts)
 			case bootstrapIndexRunType:
 				indexBlockSegment, err = runResult.getOrAddIndexSegment(start, ns, ropts)
+				if err != nil {
+					s.log.Errorf("error getting or adding index segment: %d", start.Unix())
+				}
+				s.log.Infof("getting or adding index segment: %d", start.Unix())
 			default:
 				// Unreachable unless an internal method calls with a run type casted from int
 				panic(fmt.Errorf("invalid run type: %d", run))
@@ -823,7 +827,11 @@ func (s *fileSystemSource) incrementalBootstrapIndexSegment(
 		)
 	}
 	if err := assertIndexBlockHasSingleMutableSegment(indexBlock); err != nil {
-		return err
+		return fmt.Errorf(
+			"error asserting index block has single mutable segment for blocksStart: %d, err: %s",
+			blockStart.Unix(),
+			err.Error(),
+		)
 	}
 
 	mutableSegment := indexBlock.Segments()[0].(segment.MutableSegment)
