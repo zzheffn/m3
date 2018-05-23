@@ -88,9 +88,17 @@ func (r IndexResults) Add(block IndexBlock) {
 	if len(r[blockStart].segments) != 1 {
 		fmt.Printf(
 			"expected 1 segment for blockStart: %d, but got %d during merge\n",
-			block.BlockStart().Unix(),
+			blockStart.ToTime().Unix(),
 			len(r[blockStart].segments),
 		)
+		for _, currSegment := range r[blockStart].segments {
+			_, ok := currSegment.(segment.MutableSegment)
+			if !ok {
+				fmt.Printf("mutable segment size: %d\n", currSegment.Size())
+			} else {
+				fmt.Printf("immutable segment size: %d\n", currSegment.Size())
+			}
+		}
 	}
 }
 
@@ -120,11 +128,25 @@ func (r IndexResults) GetOrAddSegment(
 		block = NewIndexBlock(blockStart, nil, nil)
 		r[blockStartNanos] = block
 	}
+
+	foundImmutable := false
 	for _, seg := range block.Segments() {
 		if mutable, ok := seg.(segment.MutableSegment); ok {
 			return mutable, nil
 		}
 		fmt.Printf("encountered immutable segment for blockStart: %d , will have to allocate and merge \n", t.Unix())
+		foundImmutable = true
+	}
+
+	if foundImmutable {
+		for _, currSegment := range block.Segments() {
+			_, ok := currSegment.(segment.MutableSegment)
+			if !ok {
+				fmt.Printf("mutable segment size: %d\n", currSegment.Size())
+			} else {
+				fmt.Printf("immutable segment size: %d\n", currSegment.Size())
+			}
+		}
 	}
 
 	alloc := opts.IndexMutableSegmentAllocator()
