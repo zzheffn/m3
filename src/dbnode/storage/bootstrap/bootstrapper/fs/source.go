@@ -568,9 +568,9 @@ func (s *fileSystemSource) loadShardReadersDataIntoShardResult(
 			case bootstrapIndexRunType:
 				indexBlockSegment, err = runResult.getOrAddIndexSegment(start, ns, ropts)
 				if err != nil {
-					s.log.Errorf("error getting or adding index segment: %d", start.Unix())
+					s.log.Errorf("error getting or adding index segment: %d for shard: %d", start.Unix(), shard)
 				}
-				s.log.Infof("getting or adding index segment: %d", start.Unix())
+				s.log.Infof("getting or adding index segment: %d for shard: %d", start.Unix(), shard)
 			default:
 				// Unreachable unless an internal method calls with a run type casted from int
 				panic(fmt.Errorf("invalid run type: %d", run))
