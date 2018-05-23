@@ -134,11 +134,11 @@ func (r IndexResults) GetOrAddSegment(
 		if mutable, ok := seg.(segment.MutableSegment); ok {
 			return mutable, nil
 		}
-		fmt.Printf("encountered immutable segment for blockStart: %d , will have to allocate and merge \n", t.Unix())
 		foundImmutable = true
 	}
 
 	if foundImmutable {
+		fmt.Printf("encountered immutable segment for blockStart: %d , will have to allocate and merge \n", t.Unix())
 		for _, currSegment := range block.Segments() {
 			_, ok := currSegment.(segment.MutableSegment)
 			if !ok {
