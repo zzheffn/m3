@@ -1014,6 +1014,9 @@ func (s *fileSystemSource) read(
 		if err != nil {
 			s.log.Warnf("filesystem bootstrapped failed to read persisted index blocks")
 		} else {
+			for shard, ranges := range r.fulfilled {
+				fmt.Printf("Subtracting %v for shard %v\n", ranges, shard)
+			}
 			// We may have less we need to read
 			shardsTimeRanges = shardsTimeRanges.Copy()
 			shardsTimeRanges.Subtract(r.fulfilled)
@@ -1184,6 +1187,8 @@ func (s *fileSystemSource) bootstrapFromIndexPersistedBlocks(
 		// we place in the IndexResuts with the call to Add(...)
 		res.result.index.Add(indexBlock, nil)
 		s.log.Infof("added FST blockStart: %d", indexBlockStart.Unix())
+		fmt.Printf("Adding %v to fulfilled\n", segmentsFulfilled)
+		fmt.Printf("including shards: %v\n", info.Shards)
 		res.fulfilled.AddRanges(segmentsFulfilled)
 	}
 
