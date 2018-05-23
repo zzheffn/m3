@@ -82,7 +82,16 @@ func (r IndexResults) Add(block IndexBlock) {
 		r[blockStart] = block
 		return
 	}
+
 	r[blockStart] = existing.Merged(block)
+
+	if len(r[blockStart].segments) != 1 {
+		fmt.Printf(
+			"expected 1 segment for blockStart: %d, but got %d during merge\n",
+			block.BlockStart().Unix(),
+			len(r[blockStart].segments),
+		)
+	}
 }
 
 // AddResults will add another set of index results to the collection, merging
@@ -115,6 +124,7 @@ func (r IndexResults) GetOrAddSegment(
 		if mutable, ok := seg.(segment.MutableSegment); ok {
 			return mutable, nil
 		}
+		fmt.Printf("encountered immutable segment for blockStart: %d , will have to allocate and merge", t.Unix())
 	}
 
 	alloc := opts.IndexMutableSegmentAllocator()
