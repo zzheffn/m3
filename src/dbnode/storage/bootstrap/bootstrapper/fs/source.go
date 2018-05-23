@@ -22,6 +22,7 @@ package fs
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -815,8 +816,14 @@ func (s *fileSystemSource) incrementalBootstrapIndexSegment(
 
 	indexResults := runResult.index.IndexResults()
 	indexBlock, ok := indexResults[xtime.ToUnixNano(blockStart)]
-	if !ok || !indexBlockHasSingleMutableSegment(indexBlock) {
-		return fmt.Errorf("missing single mutable segment")
+	if !ok {
+		return fmt.Errorf(
+			"indexResults did not contain a block for blockStart: %d",
+			blockStart.Unix(),
+		)
+	}
+	if err := assertIndexBlockHasSingleMutableSegment(indexBlock); err != nil {
+		return err
 	}
 
 	mutableSegment := indexBlock.Segments()[0].(segment.MutableSegment)
@@ -904,12 +911,16 @@ func (s *fileSystemSource) incrementalBootstrapIndexSegment(
 	return nil
 }
 
-func indexBlockHasSingleMutableSegment(b result.IndexBlock) bool {
-	if len(b.Segments()) != 1 {
-		return false
+func assertIndexBlockHasSingleMutableSegment(b result.IndexBlock) error {
+	numSegments := len(b.Segments())
+	if numSegments != 1 {
+		return fmt.Errorf("expected single segment, but found: %d", numSegments)
 	}
 	_, ok := b.Segments()[0].(segment.MutableSegment)
-	return ok
+	if !ok {
+		return errors.New("expected mutable segment, but segment was not mutable")
+	}
+	return nil
 }
 
 func (s *fileSystemSource) read(
