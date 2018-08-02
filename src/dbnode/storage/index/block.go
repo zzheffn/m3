@@ -21,8 +21,10 @@
 package index
 
 import (
+	goctx "context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -38,6 +40,8 @@ import (
 	xerrors "github.com/m3db/m3x/errors"
 	"github.com/m3db/m3x/instrument"
 	xtime "github.com/m3db/m3x/time"
+
+	"go.uber.org/atomic"
 )
 
 var (
@@ -50,6 +54,12 @@ var (
 
 	errUnableToSealBlockIllegalStateFmtString  = "unable to seal, index block state: %v"
 	errUnableToWriteBlockUnknownStateFmtString = "unable to write, unknown index block state: %v"
+)
+
+const (
+	defaultMutableSegmentRotationSize      = 16384  // TODO(prateek): migrate to options
+	defaultMutableSegmentRotationMergeSize = 262144 // TODO(prateek): migrate to options
+	defaultMutableSegmentRotationAge       = 10 * time.Second
 )
 
 type blockState byte
@@ -65,8 +75,14 @@ type newExecutorFn func() (search.Executor, error)
 type block struct {
 	sync.RWMutex
 	state               blockState
-	activeSegment       segment.MutableSegment
 	shardRangesSegments []blockShardRangesSegments
+	activeSegments      []*activeSegment
+	segmentID           atomic.Int64
+
+	// the following are used to help activeSegment rotations from map->fst Segments
+	rotateCh         chan struct{}
+	closeCtx         goctx.Context
+	closeCtxCancelFn goctx.CancelFunc
 
 	newExecutorFn newExecutorFn
 	startTime     time.Time
@@ -95,25 +111,21 @@ func NewBlock(
 		blockSize = md.Options().IndexOptions().BlockSize()
 	)
 
-	// FOLLOWUP(prateek): use this to track segments when we have multiple segments in a Block.
-	postingsOffset := postings.ID(0)
-	seg, err := mem.NewSegment(postingsOffset, opts.MemSegmentOptions())
-	if err != nil {
-		return nil, err
-	}
-
+	closeCtx, closeFn := goctx.WithCancel(goctx.Background())
 	b := &block{
-		state:         blockStateOpen,
-		activeSegment: seg,
-
-		startTime: startTime,
-		endTime:   startTime.Add(blockSize),
-		blockSize: blockSize,
-		opts:      opts,
-		nsMD:      md,
+		state:            blockStateOpen,
+		rotateCh:         make(chan struct{}, 1),
+		closeCtx:         closeCtx,
+		closeCtxCancelFn: closeFn,
+		startTime:        startTime,
+		endTime:          startTime.Add(blockSize),
+		blockSize:        blockSize,
+		opts:             opts,
+		nsMD:             md,
 	}
 	b.newExecutorFn = b.executorWithRLock
-
+	b.addActiveSegmentWithLock()
+	go b.monitorRotations()
 	return b, nil
 }
 
@@ -137,9 +149,11 @@ func (b *block) WriteBatch(inserts *WriteBatch) (WriteBatchResult, error) {
 		}, err
 	}
 
-	// NB: we're guaranteed the block (i.e. has a valid activeSegment) because
-	// of the state check above. the if check below is additional paranoia.
-	if b.activeSegment == nil { // should never happen
+	// NB: we're guaranteed the block has a mutable activeSegment because
+	// of the state check above; the if check below is additional paranoia.
+	mutableActiveSeg := b.mutableActiveSegmentWithRLock()
+	mutableSeg := mutableActiveSeg.mutableSegment
+	if mutableSeg == nil { // should never happen
 		err := b.openBlockHasNilActiveSegmentInvariantErrorWithRLock()
 		inserts.MarkUnmarkedEntriesError(err)
 		return WriteBatchResult{
@@ -147,7 +161,20 @@ func (b *block) WriteBatch(inserts *WriteBatch) (WriteBatchResult, error) {
 		}, err
 	}
 
-	err := b.activeSegment.InsertBatch(m3ninxindex.Batch{
+	defer func() {
+		if mutableSeg.Size() > defaultMutableSegmentRotationSize ||
+			time.Since(mutableActiveSeg.creationTime) > defaultMutableSegmentRotationAge {
+			mutableSeg.Seal() // TODO(prateek) error?
+			b.addActiveSegmentWithLock()
+			b.triggerRotations()
+		}
+	}()
+
+	// if l := inserts.Len(); l > 1000 {
+	// 	b.opts.InstrumentOptions().Logger().Infof("block.WriteBatch len(docs) = %d", inserts.Len())
+	// }
+
+	err := mutableSeg.InsertBatch(m3ninxindex.Batch{
 		Docs:                inserts.PendingDocs(),
 		AllowPartialUpdates: true,
 	})
@@ -181,10 +208,7 @@ func (b *block) WriteBatch(inserts *WriteBatch) (WriteBatchResult, error) {
 }
 
 func (b *block) executorWithRLock() (search.Executor, error) {
-	var expectedReaders int
-	if b.activeSegment != nil {
-		expectedReaders++
-	}
+	expectedReaders := len(b.activeSegments)
 	for _, group := range b.shardRangesSegments {
 		expectedReaders += len(group.segments)
 	}
@@ -204,8 +228,11 @@ func (b *block) executorWithRLock() (search.Executor, error) {
 	}()
 
 	// start with the segment that's being actively written to (if we have one)
-	if b.activeSegment != nil {
-		reader, err := b.activeSegment.Reader()
+	for _, seg := range b.activeSegments {
+		if seg.state != fstActiveSegmentState {
+			continue
+		}
+		reader, err := seg.Reader()
 		if err != nil {
 			return nil, err
 		}
@@ -378,9 +405,9 @@ func (b *block) Tick(c context.Cancellable, tickStart time.Time) (BlockTickResul
 	}
 
 	// active segment, can be nil incase we've evicted it already.
-	if b.activeSegment != nil {
+	for _, seg := range b.activeSegments {
 		result.NumSegments++
-		result.NumDocs += b.activeSegment.Size()
+		result.NumDocs += seg.Size()
 	}
 
 	// any other segments
@@ -405,10 +432,13 @@ func (b *block) Seal() error {
 	b.state = blockStateSealed
 
 	var multiErr xerrors.MultiError
-
-	// seal active mutable segment.
-	_, err := b.activeSegment.Seal()
-	multiErr = multiErr.Add(err)
+	// seal active mutable segments.
+	for _, seg := range b.activeSegments {
+		if seg.state == mutableActiveSegmentState {
+			_, err := seg.mutableSegment.Seal()
+			multiErr = multiErr.Add(err)
+		}
+	}
 
 	// loop over any added mutable segments and seal them too.
 	for _, group := range b.shardRangesSegments {
@@ -436,15 +466,19 @@ func (b *block) IsSealed() bool {
 func (b *block) NeedsMutableSegmentsEvicted() bool {
 	b.RLock()
 	defer b.RUnlock()
-	anyMutableSegmentNeedsEviction := b.activeSegment != nil && b.activeSegment.Size() > 0
+	anyMutableSegmentNeedsEviction := false
+
+	// loop thru active segments and see if they require to be flushed
+	for _, seg := range b.activeSegments {
+		anyMutableSegmentNeedsEviction = anyMutableSegmentNeedsEviction || seg.Size() > 0
+	}
 
 	// can early terminate if we already know we need to flush.
 	if anyMutableSegmentNeedsEviction {
 		return true
 	}
 
-	// otherwise we check all the boostrapped segments and to see if any of them
-	// need a flush
+	// otherwise we check all the boostrapped segments and to see if any of them need a flush
 	for _, shardRangeSegments := range b.shardRangesSegments {
 		for _, seg := range shardRangeSegments.segments {
 			if mutableSeg, ok := seg.(segment.MutableSegment); ok {
@@ -456,8 +490,8 @@ func (b *block) NeedsMutableSegmentsEvicted() bool {
 	return anyMutableSegmentNeedsEviction
 }
 
-func (b *block) EvictMutableSegments() (EvictMutableSegmentResults, error) {
-	var results EvictMutableSegmentResults
+func (b *block) EvictActiveSegments() (EvictActiveSegmentResults, error) {
+	var results EvictActiveSegmentResults
 	b.Lock()
 	defer b.Unlock()
 	if b.state != blockStateSealed {
@@ -465,13 +499,14 @@ func (b *block) EvictMutableSegments() (EvictMutableSegmentResults, error) {
 	}
 	var multiErr xerrors.MultiError
 
-	// close active segment.
-	if b.activeSegment != nil {
-		results.NumMutableSegments++
-		results.NumDocs += b.activeSegment.Size()
-		multiErr = multiErr.Add(b.activeSegment.Close())
-		b.activeSegment = nil
+	// close active segments
+	for _, seg := range b.activeSegments {
+		results.NumActiveSegments++
+		results.NumDocs += seg.Size()
+		multiErr = multiErr.Add(seg.Close())
 	}
+	// clear any references to active segments
+	b.activeSegments = nil
 
 	// close any other mutable segments too.
 	for idx := range b.shardRangesSegments {
@@ -482,7 +517,7 @@ func (b *block) EvictMutableSegments() (EvictMutableSegmentResults, error) {
 				segments = append(segments, seg)
 				continue
 			}
-			results.NumMutableSegments++
+			results.NumActiveSegments++
 			results.NumDocs += mutableSeg.Size()
 			multiErr = multiErr.Add(mutableSeg.Close())
 		}
@@ -502,11 +537,14 @@ func (b *block) Close() error {
 
 	var multiErr xerrors.MultiError
 
-	// close active segment.
-	if b.activeSegment != nil {
-		multiErr = multiErr.Add(b.activeSegment.Close())
-		b.activeSegment = nil
+	// cancel any rotations that might be happening.
+	b.closeCtxCancelFn()
+
+	// close any active segments.
+	for _, seg := range b.activeSegments {
+		multiErr = multiErr.Add(seg.Close())
 	}
+	b.activeSegments = nil
 
 	// close any other added segments too.
 	for _, group := range b.shardRangesSegments {
@@ -517,6 +555,162 @@ func (b *block) Close() error {
 	b.shardRangesSegments = nil
 
 	return multiErr.FinalError()
+}
+
+func (b *block) triggerRotations() {
+	select {
+	case b.rotateCh <- struct{}{}: // all good, we enqueued
+	default: // i.e. there's already a rotation enqueued, so we're good.
+	}
+}
+
+// monitorRotations monitors rotateCh and triggers activeSegment rotations when signaled.
+func (b *block) monitorRotations() {
+	for {
+		select {
+		case <-b.closeCtx.Done():
+			return
+		case <-b.rotateCh:
+			b.rotateMutableActiveSegments()
+		}
+	}
+}
+
+func (b *block) rotateMutableActiveSegments() {
+	for {
+		// check if we need to terminate due to the block being closed
+		select {
+		case <-b.closeCtx.Done():
+			return
+		default:
+		}
+
+		// find group of active segments which need to be rotated
+		var (
+			activeSegmentsToRotate                   []*activeSegment
+			segmentsToRotate                         []segment.Segment
+			accumulatedSize                          int64
+			numAccumulatedMutable, numAccumulatedFST int
+		)
+		b.Lock()
+		// NB: sort the segments into ascending order by size, to guarantee we merge as many as we can
+		sort.Slice(b.activeSegments, func(i, j int) bool {
+			return b.activeSegments[i].Size() < b.activeSegments[j].Size()
+		})
+		for _, seg := range b.activeSegments {
+			size := seg.Size()
+			// if adding this segment is going to overflow the size, don't add it, and terminate the loop
+			// because we know there are no smaller segments to be added (due to the sort above).
+			if accumulatedSize+size >= defaultMutableSegmentRotationMergeSize {
+				break
+			}
+			if seg.state == mutableActiveSegmentState && seg.mutableSegment.IsSealed() {
+				seg.state = rotatingActiveSegmentState // mark the segment as being rotated
+				accumulatedSize += size
+				segmentsToRotate = append(segmentsToRotate, seg.mutableSegment)
+				activeSegmentsToRotate = append(activeSegmentsToRotate, seg)
+				numAccumulatedMutable++
+			} else if seg.state == fstActiveSegmentState {
+				accumulatedSize += size
+				segmentsToRotate = append(segmentsToRotate, seg.fstSegment)
+				activeSegmentsToRotate = append(activeSegmentsToRotate, seg)
+				numAccumulatedFST++
+			}
+		}
+		b.Unlock()
+
+		// i.e. no active segments need rotation, so we can terminate early
+		if len(segmentsToRotate) == 0 || (len(segmentsToRotate) == 1 && numAccumulatedMutable == 0) {
+			break
+		}
+
+		// merge segments to rotate
+		postingsOffset := postings.ID(b.segmentID.Inc())
+		mergedMutableSegment := mem.NewSegment(postingsOffset, b.opts.MemSegmentOptions())
+		if err := mem.Merge(mergedMutableSegment, segmentsToRotate...); err != nil {
+			// TODO(prateek): only log for now, maybe we should add retries?
+			b.opts.InstrumentOptions().Logger().Errorf("unable to merge simple segments, err = %v", err)
+			continue
+		}
+		if _, err := mergedMutableSegment.Seal(); err != nil {
+			// TODO(prateek): only log for now, maybe we should add retries?
+			b.opts.InstrumentOptions().Logger().Errorf("unable to seal merged segment, err = %v", err)
+			continue
+		}
+
+		newActiveSegment := &activeSegment{
+			creationTime:   b.opts.ClockOptions().NowFn()(),
+			state:          rotatingActiveSegmentState,
+			mutableSegment: mergedMutableSegment,
+		}
+		if err := newActiveSegment.TransformIntoFST(b.opts); err != nil {
+			// TODO(prateek): only log for now, maybe we should add retries?
+			b.opts.InstrumentOptions().Logger().Errorf("unable to rotate simple segment into FST, err = %v", err)
+			continue
+		}
+		newActiveSegment.state = fstActiveSegmentState
+		newActiveSegment.mutableSegment.Close() // can skip error checking here as we've got the equivalent FST
+		newActiveSegment.mutableSegment = nil
+
+		// swap the successfully converted activeSegments with the newly created FST
+		b.Lock()
+		segments := make([]*activeSegment, 0, len(b.activeSegments))
+		for _, seg := range b.activeSegments {
+			// skip all the activeSegments which have been converted above
+			isRotatedSegment := false
+			for _, aseg := range activeSegmentsToRotate {
+				if seg == aseg {
+					isRotatedSegment = true
+					break
+				}
+			}
+			if !isRotatedSegment {
+				// add all other activeSegments
+				segments = append(segments, seg)
+			}
+		}
+		// finally, add the newly created activeSegment and update active segments
+		segments = append(segments, newActiveSegment)
+		b.activeSegments = segments
+		b.Unlock()
+
+		// release resources from all merged segments
+		for _, seg := range segmentsToRotate {
+			seg.Close() // can skip error checking here as we've got the equivalent FST
+		}
+	}
+}
+
+func (b *block) addActiveSegmentWithLock() {
+	postingsOffset := postings.ID(b.segmentID.Inc())
+	mutableSeg := mem.NewSegment(postingsOffset, b.opts.MemSegmentOptions())
+
+	// move the new mutable segment to the front to make it easier for writes
+	// to find a mutable segment.
+	b.activeSegments = append([]*activeSegment{
+		&activeSegment{
+			creationTime:   b.opts.ClockOptions().NowFn()(),
+			state:          mutableActiveSegmentState,
+			mutableSegment: mutableSeg,
+		},
+	}, b.activeSegments...)
+
+	logger := b.opts.InstrumentOptions().Logger()
+	logger.Infof("[blockStart: %v] stats after adding active segment", b.StartTime())
+	for i, seg := range b.activeSegments {
+		logger.Infof("%d) state [%v] size [%d]", i, seg.state.String(), seg.Size())
+	}
+}
+
+// mutableActiveSegmentWithRLock returns any activeSegment marked as a mutableSegment.
+// NB: it can return nil if no such segment exists.
+func (b *block) mutableActiveSegmentWithRLock() *activeSegment {
+	for _, seg := range b.activeSegments {
+		if seg.state == mutableActiveSegmentState {
+			return seg
+		}
+	}
+	return nil
 }
 
 func (b *block) writeBatchErrorInvalidState(state blockState) error {
@@ -545,7 +739,7 @@ func (b *block) bootstrappingSealedMutableSegmentInvariant(err error) error {
 }
 
 func (b *block) openBlockHasNilActiveSegmentInvariantErrorWithRLock() error {
-	err := fmt.Errorf("internal error: block has open block state [%v] has nil active segment", b.state)
+	err := fmt.Errorf("internal error: block has open block state [%v] has no mutable active segment", b.state)
 	instrument.EmitInvariantViolationAndGetLogger(b.opts.InstrumentOptions()).Errorf(err.Error())
 	return err
 }

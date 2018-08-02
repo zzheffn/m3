@@ -326,7 +326,7 @@ func (i *nsIndex) WriteBatch(
 	return nil
 }
 
-// WriteBatches is called by the indexInsertQueue.
+// writeBatches is called by the indexInsertQueue.
 func (i *nsIndex) writeBatches(
 	batches []*index.WriteBatch,
 ) {
@@ -507,7 +507,7 @@ func (i *nsIndex) Flush(
 		return err
 	}
 
-	var evictResults index.EvictMutableSegmentResults
+	var evictResults index.EvictActiveSegmentResults
 	for _, block := range flushable {
 		immutableSegments, err := i.flushBlock(flush, block, shards)
 		if err != nil {
@@ -525,7 +525,7 @@ func (i *nsIndex) Flush(
 		}
 		// It's now safe to remove the mutable segments as anything the block
 		// held is covered by the owned shards we just read
-		evictResult, err := block.EvictMutableSegments()
+		evictResult, err := block.EvictActiveSegments()
 		evictResults.Add(evictResult)
 		if err != nil {
 			// deliberately choosing to not mark this as an error as we have successfully
@@ -536,7 +536,7 @@ func (i *nsIndex) Flush(
 			).Warnf("encountered error while evicting mutable segments for index block")
 		}
 	}
-	i.metrics.FlushEvictedMutableSegments.Inc(evictResults.NumMutableSegments)
+	i.metrics.FlushEvictedMutableSegments.Inc(evictResults.NumActiveSegments)
 	return nil
 }
 
@@ -649,10 +649,7 @@ func (i *nsIndex) flushBlockSegment(
 ) error {
 	// FOLLOWUP(prateek): use this to track segments when we have multiple segments in a Block.
 	postingsOffset := postings.ID(0)
-	seg, err := mem.NewSegment(postingsOffset, i.opts.IndexOptions().MemSegmentOptions())
-	if err != nil {
-		return err
-	}
+	seg := mem.NewSegment(postingsOffset, i.opts.IndexOptions().MemSegmentOptions())
 	defer seg.Close()
 
 	ctx := context.NewContext()
@@ -660,6 +657,7 @@ func (i *nsIndex) flushBlockSegment(
 		var (
 			first     = true
 			pageToken PageToken
+			err       error
 		)
 		for first || pageToken != nil {
 			first = false

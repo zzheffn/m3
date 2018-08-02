@@ -189,17 +189,17 @@ func (mr *MockBlockMockRecorder) EndTime() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EndTime", reflect.TypeOf((*MockBlock)(nil).EndTime))
 }
 
-// EvictMutableSegments mocks base method
-func (m *MockBlock) EvictMutableSegments() (EvictMutableSegmentResults, error) {
-	ret := m.ctrl.Call(m, "EvictMutableSegments")
-	ret0, _ := ret[0].(EvictMutableSegmentResults)
+// EvictActiveSegments mocks base method
+func (m *MockBlock) EvictActiveSegments() (EvictActiveSegmentResults, error) {
+	ret := m.ctrl.Call(m, "EvictActiveSegments")
+	ret0, _ := ret[0].(EvictActiveSegmentResults)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// EvictMutableSegments indicates an expected call of EvictMutableSegments
-func (mr *MockBlockMockRecorder) EvictMutableSegments() *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EvictMutableSegments", reflect.TypeOf((*MockBlock)(nil).EvictMutableSegments))
+// EvictActiveSegments indicates an expected call of EvictActiveSegments
+func (mr *MockBlockMockRecorder) EvictActiveSegments() *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EvictActiveSegments", reflect.TypeOf((*MockBlock)(nil).EvictActiveSegments))
 }
 
 // IsSealed mocks base method
