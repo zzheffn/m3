@@ -84,8 +84,13 @@ type Readable interface {
 // CompiledRegex is a collection of regexp compiled structs to allow
 // amortisation of regexp construction costs.
 type CompiledRegex struct {
+	// Simple corresponds to a Go compiled 'regexp.Regexp'.
 	Simple *regexp.Regexp
-	FST    *vregex.Regexp
+
+	// FST corresponds to a Vellum compiled DFA.
+	FST       *vregex.Regexp
+	PrefixBeg []byte
+	PrefixEnd []byte
 }
 
 // DocRetriever returns the document associated with a postings ID. It returns

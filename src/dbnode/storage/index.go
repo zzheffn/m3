@@ -89,7 +89,9 @@ type nsIndex struct {
 	nsMetadata          namespace.Metadata
 	runtimeOptsListener xclose.SimpleCloser
 
-	metrics nsIndexMetrics
+	metrics        nsIndexMetrics
+	metricsCloseCh chan struct{}
+	metricsDoneCh  chan struct{}
 }
 
 type nsIndexState struct {
@@ -197,13 +199,11 @@ func newNamespaceIndexWithOptions(
 		return nil, err
 	}
 
-	scope := instrumentOpts.MetricsScope().
-		SubScope("dbindex").
-		Tagged(map[string]string{
-			"namespace": nsMD.ID().String(),
-		})
+	scope := instrumentOpts.MetricsScope().SubScope("dbindex").
+		Tagged(map[string]string{"namespace": nsMD.ID().String()})
 	instrumentOpts = instrumentOpts.SetMetricsScope(scope)
 	indexOpts = indexOpts.SetInstrumentOptions(instrumentOpts)
+	opts := newIndexOpts.opts.SetIndexOptions(indexOpts)
 
 	nowFn := indexOpts.ClockOptions().NowFn()
 	idx := &nsIndex{
@@ -225,11 +225,13 @@ func newNamespaceIndexWithOptions(
 		deleteFilesFn:         fs.DeleteFiles,
 
 		newBlockFn: newBlockFn,
-		opts:       newIndexOpts.opts,
+		opts:       opts,
 		logger:     indexOpts.InstrumentOptions().Logger(),
 		nsMetadata: nsMD,
 
-		metrics: newNamespaceIndexMetrics(instrumentOpts),
+		metrics:        newNamespaceIndexMetrics(instrumentOpts),
+		metricsCloseCh: make(chan struct{}, 1),
+		metricsDoneCh:  make(chan struct{}, 1),
 	}
 	if runtimeOptsMgr != nil {
 		idx.runtimeOptsListener = runtimeOptsMgr.RegisterListener(idx)
@@ -249,6 +251,9 @@ func newNamespaceIndexWithOptions(
 	if _, err := idx.ensureBlockPresentWithRLock(currentBlock); err != nil {
 		return nil, err
 	}
+
+	// report stats in the bg
+	go idx.reportMetricsLoop()
 
 	return idx, nil
 }
@@ -326,7 +331,7 @@ func (i *nsIndex) WriteBatch(
 	return nil
 }
 
-// WriteBatches is called by the indexInsertQueue.
+// writeBatches is called by the indexInsertQueue.
 func (i *nsIndex) writeBatches(
 	batches []*index.WriteBatch,
 ) {
@@ -384,18 +389,8 @@ func (i *nsIndex) writeBatchForBlockStartWithRLock(
 		return
 	}
 
-	// NB(r): Capture pending entries so we can emit the latencies
-	pending := batch.PendingEntries()
-
 	// i.e. we have the block and the inserts, perform the writes.
 	result, err := block.WriteBatch(batch)
-
-	// record the end to end indexing latency
-	now := i.nowFn()
-	for idx := range pending {
-		took := now.Sub(pending[idx].EnqueuedAt)
-		i.metrics.InsertEndToEndLatency.Record(took)
-	}
 
 	// NB: we don't need to do anything to the OnIndexSeries refs in `inserts` at this point,
 	// the index.Block WriteBatch assumes responsibility for calling the appropriate methods.
@@ -507,7 +502,7 @@ func (i *nsIndex) Flush(
 		return err
 	}
 
-	var evictResults index.EvictMutableSegmentResults
+	var evictResults index.EvictActiveSegmentResults
 	for _, block := range flushable {
 		immutableSegments, err := i.flushBlock(flush, block, shards)
 		if err != nil {
@@ -525,7 +520,7 @@ func (i *nsIndex) Flush(
 		}
 		// It's now safe to remove the mutable segments as anything the block
 		// held is covered by the owned shards we just read
-		evictResult, err := block.EvictMutableSegments()
+		evictResult, err := block.EvictActiveSegments()
 		evictResults.Add(evictResult)
 		if err != nil {
 			// deliberately choosing to not mark this as an error as we have successfully
@@ -536,7 +531,7 @@ func (i *nsIndex) Flush(
 			).Warnf("encountered error while evicting mutable segments for index block")
 		}
 	}
-	i.metrics.FlushEvictedMutableSegments.Inc(evictResults.NumMutableSegments)
+	i.metrics.FlushEvictedMutableSegments.Inc(evictResults.NumActiveSegments)
 	return nil
 }
 
@@ -649,10 +644,7 @@ func (i *nsIndex) flushBlockSegment(
 ) error {
 	// FOLLOWUP(prateek): use this to track segments when we have multiple segments in a Block.
 	postingsOffset := postings.ID(0)
-	seg, err := mem.NewSegment(postingsOffset, i.opts.IndexOptions().MemSegmentOptions())
-	if err != nil {
-		return err
-	}
+	seg := mem.NewSegment(postingsOffset, i.opts.IndexOptions().MemSegmentOptions())
 	defer seg.Close()
 
 	ctx := context.NewContext()
@@ -660,6 +652,7 @@ func (i *nsIndex) flushBlockSegment(
 		var (
 			first     = true
 			pageToken PageToken
+			err       error
 		)
 		for first || pageToken != nil {
 			first = false
@@ -720,6 +713,8 @@ func (i *nsIndex) Query(
 	if !i.isOpenWithRLock() {
 		return index.QueryResults{}, errDbIndexUnableToQueryClosed
 	}
+
+	println(fmt.Sprintf("incoming query: %v", query.String())) // TODO(prateek): remove this
 
 	// override query response limit if needed.
 	if i.state.runtimeOpts.maxQueryLimit > 0 && (opts.Limit == 0 ||
@@ -903,6 +898,44 @@ func (i *nsIndex) CleanupExpiredFileSets(t time.Time) error {
 	return i.deleteFilesFn(filesets)
 }
 
+func (i *nsIndex) reportMetricsLoop() {
+	reportInterval := i.opts.InstrumentOptions().ReportInterval()
+	for {
+		select {
+		case <-i.metricsCloseCh:
+			close(i.metricsDoneCh)
+			return
+		default: // fallthru deliberately
+		}
+
+		var (
+			cumulativeStats index.BlockStats
+			numBlocks       int64
+		)
+		i.state.RLock()
+		for _, blk := range i.state.blocksByTime {
+			cumulativeStats.Add(blk.Stats())
+			numBlocks++
+		}
+		i.state.RUnlock()
+
+		// top-level
+		i.metrics.NumBlocks.Update(float64(numBlocks))
+		// active segment stats
+		i.metrics.NumDocsActiveSegments.Update(float64(cumulativeStats.Active.NumDocs))
+		i.metrics.NumActiveCompactions.Update(float64(cumulativeStats.Active.NumActiveCompactions))
+		i.metrics.NumSegmentsCompacting.Update(float64(cumulativeStats.Active.NumSegmentsCompacting))
+		i.metrics.NumActiveSegments.Update(float64(cumulativeStats.Active.NumSegments))
+		i.metrics.NumActiveFSTSegments.Update(float64(cumulativeStats.Active.NumFSTSegments))
+		i.metrics.NumActiveMutableSegments.Update(float64(cumulativeStats.Active.NumMutableSegments))
+		// shardrange segment stats
+		i.metrics.NumDocsShardRanges.Update(float64(cumulativeStats.Shard.NumDocs))
+		i.metrics.NumSegmentsShardRanges.Update(float64(cumulativeStats.Shard.NumSegments))
+
+		time.Sleep(reportInterval)
+	}
+}
+
 func (i *nsIndex) Close() error {
 	i.state.Lock()
 	defer i.state.Unlock()
@@ -928,6 +961,10 @@ func (i *nsIndex) Close() error {
 		i.runtimeOptsListener = nil
 	}
 
+	// wait till bg metrics reporter shuts down
+	close(i.metricsCloseCh)
+	<-i.metricsDoneCh
+
 	return multiErr.FinalError()
 }
 
@@ -944,30 +981,52 @@ func (i *nsIndex) unableToAllocBlockInvariantError(err error) error {
 }
 
 type nsIndexMetrics struct {
-	AsyncInsertErrors           tally.Counter
-	InsertAfterClose            tally.Counter
-	QueryAfterClose             tally.Counter
-	InsertEndToEndLatency       tally.Timer
+	// top-level
+	NumBlocks tally.Gauge
+	// active segment stats
+	NumDocsActiveSegments    tally.Gauge
+	NumActiveCompactions     tally.Gauge
+	NumSegmentsCompacting    tally.Gauge
+	NumActiveSegments        tally.Gauge
+	NumActiveMutableSegments tally.Gauge
+	NumActiveFSTSegments     tally.Gauge
+	// ShardRange segment stats
+	NumDocsShardRanges     tally.Gauge
+	NumSegmentsShardRanges tally.Gauge
+	// insert/query
+	AsyncInsertErrors tally.Counter
+	InsertAfterClose  tally.Counter
+	QueryAfterClose   tally.Counter
+	// housekeeping
 	FlushEvictedMutableSegments tally.Counter
 }
 
 func newNamespaceIndexMetrics(
 	iopts instrument.Options,
 ) nsIndexMetrics {
-	scope := iopts.MetricsScope()
+	var (
+		scope               = iopts.MetricsScope()
+		activeSegmentsScope = scope.Tagged(map[string]string{"segment_type": "active"})
+		shardSegmentsScope  = scope.Tagged(map[string]string{"segment_type": "shardranges"})
+	)
 	return nsIndexMetrics{
-		AsyncInsertErrors: scope.Tagged(map[string]string{
-			"error_type": "async-insert",
-		}).Counter("index-error"),
-		InsertAfterClose: scope.Tagged(map[string]string{
-			"error_type": "insert-closed",
-		}).Counter("insert-after-close"),
-		QueryAfterClose: scope.Tagged(map[string]string{
-			"error_type": "query-closed",
-		}).Counter("query-after-error"),
-		InsertEndToEndLatency: instrument.MustCreateSampledTimer(
-			scope.Timer("insert-end-to-end-latency"),
-			iopts.MetricsSamplingRate()),
+		// top-level
+		NumBlocks: scope.Gauge("num-blocks"),
+		// active segment stats
+		NumDocsActiveSegments:    activeSegmentsScope.Gauge("num-docs"),
+		NumActiveCompactions:     scope.Gauge("num-active-compactions"),
+		NumSegmentsCompacting:    scope.Gauge("num-segments-compacting"),
+		NumActiveSegments:        activeSegmentsScope.Gauge("num-segments"),
+		NumActiveMutableSegments: activeSegmentsScope.Gauge("num-mutable-segments"),
+		NumActiveFSTSegments:     activeSegmentsScope.Gauge("num-fst-segments"),
+		// shardrange segment stats
+		NumDocsShardRanges:     shardSegmentsScope.Gauge("num-docs"),
+		NumSegmentsShardRanges: shardSegmentsScope.Gauge("num-segments"),
+		// insert/query
+		AsyncInsertErrors: scope.Tagged(map[string]string{"error_type": "async-insert"}).Counter("index-error"),
+		InsertAfterClose:  scope.Tagged(map[string]string{"error_type": "insert-closed"}).Counter("insert-after-close"),
+		QueryAfterClose:   scope.Tagged(map[string]string{"error_type": "query-closed"}).Counter("query-after-error"),
+		// housekeeping
 		FlushEvictedMutableSegments: scope.Counter("mutable-segment-evicted"),
 	}
 }

@@ -21,17 +21,44 @@
 package index
 
 import (
-	"github.com/m3db/m3/src/dbnode/storage/bootstrap/result"
-	"github.com/m3db/m3/src/m3ninx/index/segment"
-	"github.com/m3db/m3/src/m3ninx/index/segment/mem"
+	"math"
+	"runtime"
+
+	"github.com/m3db/m3/src/dbnode/storage/index/compaction"
+	xsync "github.com/m3db/m3x/sync"
 )
 
-// NewBootstrapResultMutableSegmentAllocator returns a default mutable segment
-// allocator for a bootstrap result index block given index options.
-func NewBootstrapResultMutableSegmentAllocator(
-	opts Options,
-) result.MutableSegmentAllocator {
-	return func() (segment.MutableSegment, error) {
-		return mem.NewSegment(0, opts.MemSegmentOptions()), nil
+type compactionOpts struct {
+	plannerOpts compaction.PlannerOptions
+	workerPool  xsync.WorkerPool
+}
+
+func NewCompactionOptions() CompactionOptions {
+	defaultConcurrency := int(math.Max(1, math.Ceil(float64(runtime.NumCPU())/4)))
+	workers := xsync.NewWorkerPool(defaultConcurrency)
+	workers.Init()
+	return &compactionOpts{
+		plannerOpts: compaction.DefaultOptions,
+		workerPool:  workers,
 	}
+}
+
+func (co *compactionOpts) SetPlannerOptions(value compaction.PlannerOptions) CompactionOptions {
+	opts := *co
+	opts.plannerOpts = value
+	return &opts
+}
+
+func (co *compactionOpts) PlannerOptions() compaction.PlannerOptions {
+	return co.plannerOpts
+}
+
+func (co *compactionOpts) SetWorkerPool(value xsync.WorkerPool) CompactionOptions {
+	opts := *co
+	opts.workerPool = value
+	return &opts
+}
+
+func (co *compactionOpts) WorkerPool() xsync.WorkerPool {
+	return co.workerPool
 }

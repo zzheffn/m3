@@ -18,20 +18,46 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package index
+// Adapted from: https://raw.githubusercontent.com/blevesearch/bleve/master/index/scorch/segment/regexp_test.go
+package regexp
 
 import (
-	"github.com/m3db/m3/src/dbnode/storage/bootstrap/result"
-	"github.com/m3db/m3/src/m3ninx/index/segment"
-	"github.com/m3db/m3/src/m3ninx/index/segment/mem"
+	"regexp/syntax"
+	"testing"
 )
 
-// NewBootstrapResultMutableSegmentAllocator returns a default mutable segment
-// allocator for a bootstrap result index block given index options.
-func NewBootstrapResultMutableSegmentAllocator(
-	opts Options,
-) result.MutableSegmentAllocator {
-	return func() (segment.MutableSegment, error) {
-		return mem.NewSegment(0, opts.MemSegmentOptions()), nil
+func TestLiteralPrefix(t *testing.T) {
+	tests := []struct {
+		input, expected string
+	}{
+		{"", ""},
+		{"hello", "hello"},
+		{"hello.?", "hello"},
+		{"hello$", "hello"},
+		{`[h][e][l][l][o].*world`, "hello"},
+		{`[h-h][e-e][l-l][l-l][o-o].*world`, "hello"},
+		{".*", ""},
+		{"h.*", "h"},
+		{"h.?", "h"},
+		{"h[a-z]", "h"},
+		{`h\s`, "h"},
+		{`(hello)world`, ""},
+		{`日本語`, "日本語"},
+		{`日本語\w`, "日本語"},
+		{`^hello`, ""},
+		{`^`, ""},
+		{`$`, ""},
+	}
+
+	for i, test := range tests {
+		s, err := syntax.Parse(test.input, syntax.Perl)
+		if err != nil {
+			t.Fatalf("expected no syntax.Parse error, got: %v", err)
+		}
+
+		got := LiteralPrefix(s)
+		if test.expected != got {
+			t.Fatalf("test: %d, %+v, got: %s", i, test, got)
+		}
 	}
 }

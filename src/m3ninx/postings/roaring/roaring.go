@@ -22,7 +22,7 @@ package roaring
 
 import (
 	"errors"
-	"sync"
+	"fmt"
 
 	"github.com/m3db/m3/src/m3ninx/postings"
 	"github.com/m3db/m3/src/m3ninx/x"
@@ -37,9 +37,23 @@ var (
 	errIteratorClosed        = errors.New("iterator has been closed")
 )
 
-// postingsList wraps a Roaring Bitmap with a mutex for thread safety.
+// Union retrieves a new postings list which is the union of the provided lists.
+func Union(inputs []postings.List) (postings.MutableList, error) {
+	bitmaps := make([]*roaring.Bitmap, 0, len(inputs))
+	for _, in := range inputs {
+		pl, ok := in.(*postingsList)
+		if !ok {
+			return nil, fmt.Errorf("unable to convert inputs into roaring postings lists")
+		}
+		bitmaps = append(bitmaps, pl.bitmap)
+	}
+	return &postingsList{
+		bitmap: roaring.FastOr(bitmaps...),
+	}, nil
+}
+
+// postingsList abstracts a Roaring Bitmap.
 type postingsList struct {
-	sync.RWMutex
 	bitmap *roaring.Bitmap
 }
 
@@ -51,9 +65,7 @@ func NewPostingsList() postings.MutableList {
 }
 
 func (d *postingsList) Insert(i postings.ID) {
-	d.Lock()
 	d.bitmap.Add(uint32(i))
-	d.Unlock()
 }
 
 func (d *postingsList) Intersect(other postings.List) error {
@@ -62,11 +74,7 @@ func (d *postingsList) Intersect(other postings.List) error {
 		return errIntersectRoaringOnly
 	}
 
-	o.RLock()
-	d.Lock()
 	d.bitmap.And(o.bitmap)
-	d.Unlock()
-	o.RUnlock()
 	return nil
 }
 
@@ -76,11 +84,7 @@ func (d *postingsList) Difference(other postings.List) error {
 		return errDifferenceRoaringOnly
 	}
 
-	o.RLock()
-	d.Lock()
 	d.bitmap.AndNot(o.bitmap)
-	d.Unlock()
-	o.RUnlock()
 	return nil
 }
 
@@ -90,29 +94,21 @@ func (d *postingsList) Union(other postings.List) error {
 		return errUnionRoaringOnly
 	}
 
-	o.RLock()
-	d.Lock()
 	d.bitmap.Or(o.bitmap)
-	d.Unlock()
-	o.RUnlock()
 	return nil
 }
 
 func (d *postingsList) AddRange(min, max postings.ID) {
-	d.Lock()
 	d.bitmap.AddRange(uint64(min), uint64(max))
-	d.Unlock()
 }
 
 func (d *postingsList) AddIterator(iter postings.Iterator) error {
 	safeIter := x.NewSafeCloser(iter)
 	defer safeIter.Close()
 
-	d.Lock()
 	for iter.Next() {
 		d.bitmap.Add(uint32(iter.Current()))
 	}
-	d.Unlock()
 
 	if err := iter.Err(); err != nil {
 		return err
@@ -122,58 +118,39 @@ func (d *postingsList) AddIterator(iter postings.Iterator) error {
 }
 
 func (d *postingsList) RemoveRange(min, max postings.ID) {
-	d.Lock()
 	d.bitmap.RemoveRange(uint64(min), uint64(max))
-	d.Unlock()
 }
 
 func (d *postingsList) Reset() {
-	d.Lock()
 	d.bitmap.Clear()
-	d.Unlock()
 }
 
 func (d *postingsList) Contains(i postings.ID) bool {
-	d.RLock()
-	contains := d.bitmap.Contains(uint32(i))
-	d.RUnlock()
-	return contains
+	return d.bitmap.Contains(uint32(i))
 }
 
 func (d *postingsList) IsEmpty() bool {
-	d.RLock()
-	empty := d.bitmap.IsEmpty()
-	d.RUnlock()
-	return empty
+	return d.bitmap.IsEmpty()
 }
 
 func (d *postingsList) Max() (postings.ID, error) {
-	d.RLock()
 	if d.bitmap.IsEmpty() {
-		d.RUnlock()
 		return 0, postings.ErrEmptyList
 	}
 	max := d.bitmap.Maximum()
-	d.RUnlock()
 	return postings.ID(max), nil
 }
 
 func (d *postingsList) Min() (postings.ID, error) {
-	d.RLock()
 	if d.bitmap.IsEmpty() {
-		d.RUnlock()
 		return 0, postings.ErrEmptyList
 	}
 	min := d.bitmap.Minimum()
-	d.RUnlock()
 	return postings.ID(min), nil
 }
 
 func (d *postingsList) Len() int {
-	d.RLock()
-	l := d.bitmap.GetCardinality()
-	d.RUnlock()
-	return int(l)
+	return int(d.bitmap.GetCardinality())
 }
 
 func (d *postingsList) Iterator() postings.Iterator {
@@ -183,13 +160,11 @@ func (d *postingsList) Iterator() postings.Iterator {
 }
 
 func (d *postingsList) Clone() postings.MutableList {
-	d.RLock()
 	// TODO: It's cheaper to Clone than to cache roaring bitmaps, see
 	// `postings_list_bench_test.go`. Their internals don't allow for
 	// pooling at the moment. We should address this when get a chance
 	// (move to another implementation / address deficiencies).
 	clone := d.bitmap.Clone()
-	d.RUnlock()
 	return &postingsList{
 		bitmap: clone,
 	}

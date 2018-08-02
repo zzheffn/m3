@@ -148,7 +148,7 @@ func TestNamespaceIndexFlushSuccess(t *testing.T) {
 		gomock.Any(), gomock.Any(), block.FetchBlocksMetadataOptions{}).Return(results, nil, nil)
 
 	mockBlock.EXPECT().AddResults(gomock.Any()).Return(nil)
-	mockBlock.EXPECT().EvictMutableSegments().Return(index.EvictMutableSegmentResults{}, nil)
+	mockBlock.EXPECT().EvictActiveSegments().Return(index.EvictActiveSegmentResults{}, nil)
 
 	require.NoError(t, nsIdx.Flush(mockFlush, shards))
 	require.True(t, persistCalled)
@@ -272,7 +272,7 @@ func TestNamespaceIndexFlushSuccessMultipleShards(t *testing.T) {
 		gomock.Any(), gomock.Any(), block.FetchBlocksMetadataOptions{}).Return(results2, nil, nil)
 
 	mockBlock.EXPECT().AddResults(gomock.Any()).Return(nil)
-	mockBlock.EXPECT().EvictMutableSegments().Return(index.EvictMutableSegmentResults{}, nil)
+	mockBlock.EXPECT().EvictActiveSegments().Return(index.EvictActiveSegmentResults{}, nil)
 
 	require.NoError(t, nsIdx.Flush(mockFlush, shards))
 	require.Equal(t, 2, numPersistCalls)

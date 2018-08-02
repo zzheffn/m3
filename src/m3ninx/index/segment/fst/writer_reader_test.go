@@ -385,9 +385,7 @@ func newTestSegments(t *testing.T, docs []doc.Document) (memSeg sgmt.MutableSegm
 
 func newTestMemSegment(t *testing.T) sgmt.MutableSegment {
 	opts := mem.NewOptions()
-	s, err := mem.NewSegment(postings.ID(0), opts)
-	require.NoError(t, err)
-	return s
+	return mem.NewSegment(postings.ID(0), opts)
 }
 
 func newFSTSegment(t *testing.T, s sgmt.MutableSegment) sgmt.Segment {

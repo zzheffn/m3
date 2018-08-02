@@ -100,7 +100,7 @@ imports:
   subpackages:
   - capnslog
 - name: github.com/couchbase/vellum
-  version: 1782e2d46ce2a9f28bd1ac1b46cd141c0d887c9b
+  version: 079a9d5e5c16e5dd839f8e80422e7f96a329da48
   repo: https://github.com/m3db/vellum
   subpackages:
   - regexp

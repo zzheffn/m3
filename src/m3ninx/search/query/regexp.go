@@ -27,10 +27,9 @@ import (
 
 	"github.com/m3db/m3/src/m3ninx/generated/proto/querypb"
 	"github.com/m3db/m3/src/m3ninx/index"
+	vregexp "github.com/m3db/m3/src/m3ninx/index/segment/fst/regexp"
 	"github.com/m3db/m3/src/m3ninx/search"
 	"github.com/m3db/m3/src/m3ninx/search/searcher"
-
-	vregex "github.com/couchbase/vellum/regexp"
 )
 
 // RegexpQuery finds documents which match the given regular expression.
@@ -52,11 +51,13 @@ func NewRegexpQuery(field, regexp []byte) (search.Query, error) {
 	}
 	compiledRegex.Simple = simpleRE
 
-	fstRE, err := vregex.New(stringRE)
+	fstRE, prefixBeg, prefixEnd, err := vregexp.ParseRegexp(stringRE)
 	if err != nil {
 		return nil, err
 	}
 	compiledRegex.FST = fstRE
+	compiledRegex.PrefixBeg = prefixBeg
+	compiledRegex.PrefixEnd = prefixEnd
 
 	return &RegexpQuery{
 		field:    field,
