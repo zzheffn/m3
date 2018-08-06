@@ -23,6 +23,8 @@ package index
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"sync"
 	"time"
 
 	m3ninxindex "github.com/m3db/m3db/src/m3ninx/index"
@@ -55,10 +57,12 @@ func (a activeSegmentState) String() string {
 // activeSegment starts out backed by a mutable segment, which is rotated
 // to a FST segment based on size constraints.
 type activeSegment struct {
+	readsWg        sync.WaitGroup
 	creationTime   time.Time
 	state          activeSegmentState
 	mutableSegment segment.MutableSegment
 	fstSegment     segment.Segment
+	sealed         bool
 }
 
 func (a *activeSegment) TransformIntoFST(opts Options) error {
@@ -125,10 +129,26 @@ func (a *activeSegment) TransformIntoFST(opts Options) error {
 }
 
 func (a *activeSegment) Reader() (m3ninxindex.Reader, error) {
-	if a.state == fstActiveSegmentState {
-		return a.fstSegment.Reader()
+	if a.IsSealed() {
+		return nil, fmt.Errorf("segment is sealed")
 	}
-	return a.mutableSegment.Reader()
+	var (
+		r   m3ninxindex.Reader
+		err error
+	)
+	if a.state == fstActiveSegmentState {
+		r, err = a.fstSegment.Reader()
+	} else {
+		r, err = a.mutableSegment.Reader()
+	}
+	if err == nil {
+		a.readsWg.Add(1)
+	}
+	return r, err
+}
+
+func (a *activeSegment) ReaderDone() {
+	a.readsWg.Done()
 }
 
 func (a *activeSegment) Size() int64 {
@@ -138,13 +158,43 @@ func (a *activeSegment) Size() int64 {
 	return a.mutableSegment.Size()
 }
 
+func (a *activeSegment) Seal() error {
+	if a.IsSealed() {
+		return fmt.Errorf("segment already sealed")
+	}
+	a.sealed = true
+	return nil
+}
+
+func (a *activeSegment) IsSealed() bool {
+	return a.sealed
+}
+
 func (a *activeSegment) Close() error {
-	if a.state == mutableActiveSegmentState {
-		return a.mutableSegment.Close()
+	if !a.IsSealed() {
+		return fmt.Errorf("segment is not sealed")
 	}
 
-	// TODO(prateek): handle rotatingActiveSegmentState
-	return a.fstSegment.Close()
+	go func() {
+		a.readsWg.Wait()
+
+		err := func() error {
+			if a.state == mutableActiveSegmentState {
+				return a.mutableSegment.Close()
+			}
+
+			// TODO(prateek): handle rotatingActiveSegmentState
+			if a.state == fstActiveSegmentState {
+				return a.fstSegment.Close()
+			}
+			return nil
+		}()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "bad active segement close: %v", err)
+		}
+	}()
+
+	return nil
 }
 
 type fstSegmentMetadata struct {

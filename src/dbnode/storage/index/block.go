@@ -24,6 +24,7 @@ import (
 	goctx "context"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -70,12 +71,12 @@ const (
 	blockStateSealed
 )
 
-type newExecutorFn func() (search.Executor, error)
+type newExecutorFn func() (search.Executor, doneFn, error)
 
 type block struct {
 	sync.RWMutex
 	state               blockState
-	shardRangesSegments []blockShardRangesSegments
+	shardRangesSegments []*blockShardRangesSegments
 	activeSegments      []*activeSegment
 	segmentID           atomic.Int64
 
@@ -96,8 +97,10 @@ type block struct {
 // and time ranges they completely cover, this can only ever come from computing
 // from data that has come from shards, either on an index flush or a bootstrap.
 type blockShardRangesSegments struct {
+	readsWg         sync.WaitGroup
 	shardTimeRanges result.ShardTimeRanges
 	segments        []segment.Segment
+	sealed          bool
 }
 
 // NewBlock returns a new Block, representing a complete reverse index for the
@@ -207,16 +210,29 @@ func (b *block) WriteBatch(inserts *WriteBatch) (WriteBatchResult, error) {
 	}, partialErr
 }
 
-func (b *block) executorWithRLock() (search.Executor, error) {
+type doneFn func()
+
+func (b *block) executorWithRLock() (search.Executor, doneFn, error) {
 	expectedReaders := len(b.activeSegments)
 	for _, group := range b.shardRangesSegments {
 		expectedReaders += len(group.segments)
 	}
 
 	var (
-		readers = make([]m3ninxindex.Reader, 0, expectedReaders)
-		success = false
+		activeSegs    = make([]*activeSegment, 0, expectedReaders)
+		nonActiveSegs = make([]*blockShardRangesSegments, 0, expectedReaders)
+		readers       = make([]m3ninxindex.Reader, 0, expectedReaders)
+		success       = false
 	)
+
+	done := func() {
+		for _, seg := range activeSegs {
+			seg.ReaderDone()
+		}
+		for _, group := range nonActiveSegs {
+			group.readsWg.Done()
+		}
+	}
 
 	// cleanup in case any of the readers below fail.
 	defer func() {
@@ -234,9 +250,10 @@ func (b *block) executorWithRLock() (search.Executor, error) {
 		}
 		reader, err := seg.Reader()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		readers = append(readers, reader)
+		activeSegs = append(activeSegs, seg)
 	}
 
 	// loop over the segments associated to shard time ranges
@@ -244,14 +261,16 @@ func (b *block) executorWithRLock() (search.Executor, error) {
 		for _, seg := range group.segments {
 			reader, err := seg.Reader()
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			readers = append(readers, reader)
 		}
+		group.readsWg.Add(1)
+		nonActiveSegs = append(nonActiveSegs, group)
 	}
 
 	success = true
-	return executor.NewExecutor(readers), nil
+	return executor.NewExecutor(readers), done, nil
 }
 
 func (b *block) Query(
@@ -260,15 +279,18 @@ func (b *block) Query(
 	results Results,
 ) (bool, error) {
 	b.RLock()
-	defer b.RUnlock()
 	if b.state == blockStateClosed {
+		b.RUnlock()
 		return false, errUnableToQueryBlockClosed
 	}
 
-	exec, err := b.newExecutorFn()
+	exec, done, err := b.newExecutorFn()
+	b.RUnlock()
 	if err != nil {
 		return false, err
 	}
+
+	defer done()
 
 	// FOLLOWUP(prateek): push down QueryOptions to restrict results
 	// TODO(jeromefroe): Use the idx query directly once we implement an index in m3ninx
@@ -361,7 +383,7 @@ func (b *block) AddResults(
 		}
 	}
 
-	entry := blockShardRangesSegments{
+	entry := &blockShardRangesSegments{
 		shardTimeRanges: results.Fulfilled(),
 		segments:        results.Segments(),
 	}
@@ -385,11 +407,17 @@ func (b *block) AddResults(
 	// This is the case where the new segments can wholly replace the
 	// current set of blocks since unfullfilled by the new segments is zero
 	for i, group := range b.shardRangesSegments {
-		for _, seg := range group.segments {
-			// Make sure to close the existing segments
-			multiErr = multiErr.Add(seg.Close())
-		}
-		b.shardRangesSegments[i] = blockShardRangesSegments{}
+		group := group
+		group.sealed = true
+		go func() {
+			group.readsWg.Wait()
+			for _, seg := range group.segments {
+				if err := seg.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "error closing segment: %v\n", err)
+				}
+			}
+		}()
+		b.shardRangesSegments[i] = nil
 	}
 	b.shardRangesSegments = append(b.shardRangesSegments[:0], entry)
 
@@ -503,26 +531,11 @@ func (b *block) EvictActiveSegments() (EvictActiveSegmentResults, error) {
 	for _, seg := range b.activeSegments {
 		results.NumActiveSegments++
 		results.NumDocs += seg.Size()
+		multiErr = multiErr.Add(seg.Seal())
 		multiErr = multiErr.Add(seg.Close())
 	}
 	// clear any references to active segments
 	b.activeSegments = nil
-
-	// close any other mutable segments too.
-	for idx := range b.shardRangesSegments {
-		segments := make([]segment.Segment, 0, len(b.shardRangesSegments[idx].segments))
-		for _, seg := range b.shardRangesSegments[idx].segments {
-			mutableSeg, ok := seg.(segment.MutableSegment)
-			if !ok {
-				segments = append(segments, seg)
-				continue
-			}
-			results.NumActiveSegments++
-			results.NumDocs += mutableSeg.Size()
-			multiErr = multiErr.Add(mutableSeg.Close())
-		}
-		b.shardRangesSegments[idx].segments = segments
-	}
 
 	return results, multiErr.FinalError()
 }
@@ -542,15 +555,24 @@ func (b *block) Close() error {
 
 	// close any active segments.
 	for _, seg := range b.activeSegments {
+		multiErr = multiErr.Add(seg.Seal())
 		multiErr = multiErr.Add(seg.Close())
 	}
 	b.activeSegments = nil
 
 	// close any other added segments too.
 	for _, group := range b.shardRangesSegments {
-		for _, seg := range group.segments {
-			multiErr = multiErr.Add(seg.Close())
-		}
+		group := group
+		group.sealed = true
+		go func() {
+			group.readsWg.Wait()
+
+			for _, seg := range group.segments {
+				if err := seg.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "error closing segment: %v\n", err)
+				}
+			}
+		}()
 	}
 	b.shardRangesSegments = nil
 
@@ -655,6 +677,7 @@ func (b *block) rotateMutableActiveSegments() {
 		// swap the successfully converted activeSegments with the newly created FST
 		b.Lock()
 		segments := make([]*activeSegment, 0, len(b.activeSegments))
+		rotatedSegments := make([]*activeSegment, 0, len(b.activeSegments))
 		for _, seg := range b.activeSegments {
 			// skip all the activeSegments which have been converted above
 			isRotatedSegment := false
@@ -667,6 +690,8 @@ func (b *block) rotateMutableActiveSegments() {
 			if !isRotatedSegment {
 				// add all other activeSegments
 				segments = append(segments, seg)
+			} else {
+				rotatedSegments = append(rotatedSegments, seg)
 			}
 		}
 		// finally, add the newly created activeSegment and update active segments
@@ -675,8 +700,9 @@ func (b *block) rotateMutableActiveSegments() {
 		b.Unlock()
 
 		// release resources from all merged segments
-		for _, seg := range segmentsToRotate {
-			seg.Close() // can skip error checking here as we've got the equivalent FST
+		for _, activeSeg := range rotatedSegments {
+			activeSeg.Seal()
+			activeSeg.Close()
 		}
 	}
 }
