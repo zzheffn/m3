@@ -38,8 +38,6 @@
     
       <link rel="stylesheet" href="../../assets/stylesheets/application-709eec9410.css">
       
-        <link rel="stylesheet" href="../../assets/stylesheets/application-23f75ab9c7.palette.css">
-      
     
     
       <script src="../../assets/javascripts/modernizr-e826f8942a.js"></script>
@@ -55,11 +53,7 @@
     
   </head>
   
-    
-    
-    
-      <body data-md-color-primary="indigo" data-md-color-accent="indigo">
-    
+    <body>
   
     <svg class="md-svg">
       <defs>
@@ -744,7 +738,7 @@
 <p>This document is a getting started guide to integrating M3DB with Prometheus.</p>
 <h2 id="m3-coordinator-configuration">M3 Coordinator configuration</h2>
 <p>To write to a remote M3DB cluster the simplest configuration is to run <code>m3coordinator</code> as a sidecar alongside Prometheus.</p>
-<p>Start by downloading the <a href="https://github.com/m3db/m3/blob/master/src/coordinator/config/m3coordinator-cluster-template.yml">config template</a>. Update the <code>namespaces</code> and the <code>client</code> section for a new cluster to match your cluster's configuration.</p>
+<p>Start by downloading the <a href="https://github.com/m3db/m3/blob/master/src/query/config/m3coordinator-cluster-template.yml">config template</a>. Update the <code>namespaces</code> and the <code>client</code> section for a new cluster to match your cluster's configuration.</p>
 <p>You'll need to specify the static IPs or hostnames of your M3DB seed nodes, and the name and retention values of the namespace you set up.  You can leave the namespace storage metrics type as <code>unaggregated</code> since it's required by default to have a cluster that receives all Prometheus metrics unaggregated.  In the future you might also want to aggregate and downsample metrics for longer retention, and you can come back and update the config once you've setup those clusters.</p>
 <p>It should look something like:</p>
 <pre><code>listenAddress: 0.0.0.0:7201
