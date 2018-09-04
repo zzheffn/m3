@@ -81,6 +81,7 @@ func (b *bootstrapProcessProvider) Provide() (Process, error) {
 	if err != nil {
 		return nil, err
 	}
+	// construct bootstrapper.InitialTopologyState...?
 	return bootstrapProcess{
 		processOpts:  b.processOpts,
 		resultOpts:   b.resultOpts,
@@ -96,6 +97,7 @@ type bootstrapProcess struct {
 	nowFn        clock.NowFn
 	log          xlog.Logger
 	bootstrapper Bootstrapper
+	// initialTopologyState bootstrapper.InitialTopologyState...?
 }
 
 func (b bootstrapProcess) Run(
@@ -303,4 +305,5 @@ func (b bootstrapProcess) newRunOptions() RunOptions {
 		SetCacheSeriesMetadata(
 			b.processOpts.CacheSeriesMetadata(),
 		)
+	// .SetInitialTopologyState(b.initialTopologyState) ?
 }
