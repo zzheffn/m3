@@ -250,5 +250,4 @@ func TestDAGWithCountOverTimeOp(t *testing.T) {
 	assert.Len(t, edges, 1)
 	assert.Equal(t, edges[0].ParentID, parser.NodeID("0"), "fetch should be the parent")
 	assert.Equal(t, edges[0].ChildID, parser.NodeID("1"), "aggregation should be the child")
-
 }
