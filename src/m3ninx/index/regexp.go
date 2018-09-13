@@ -113,8 +113,12 @@ func ensureRegexpUnanchored(parsed *syntax.Regexp) (*syntax.Regexp, error) {
 }
 
 func ensureRegexpUnanchoredHelper(parsed *syntax.Regexp, leftmost, rightmost bool) (output *syntax.Regexp, changed bool, err error) {
-	newRegexp := parsed
-	changed = false
+	// short circuit when we know we won't make any changes to the underlying regexp.
+	if !leftmost && !rightmost {
+		return parsed, false, nil
+	}
+
+	newRegexp, changed := parsed, false
 	switch parsed.Op {
 	case syntax.OpBeginLine, syntax.OpEndLine:
 		// i.e. the flags provided to syntax.Parse did not include the `OneLine` flag, which
