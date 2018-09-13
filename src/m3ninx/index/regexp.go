@@ -58,18 +58,15 @@ func CompileRegex(r []byte) (CompiledRegex, error) {
 		return CompiledRegex{}, fmt.Errorf("unable to create map re: %v", err)
 	}
 
-	var (
-		compiledRegex = CompiledRegex{}
-	)
 	simpleRE, err := re.Compile(simpleRe.String())
 	if err != nil {
-		return compiledRegex, err
+		return CompiledRegex{}, err
 	}
-	compiledRegex.Simple = simpleRE
+	compiledRegex := CompiledRegex{Simple: simpleRE}
 
 	fstRE, start, end, err := fstregexp.ParsedRegexp(reString, vellumRe)
 	if err != nil {
-		return compiledRegex, err
+		return CompiledRegex{}, err
 	}
 	compiledRegex.FST = fstRE
 	compiledRegex.PrefixBegin = start
@@ -116,6 +113,7 @@ func ensureRegexpUnanchored(parsed *syntax.Regexp) (*syntax.Regexp, error) {
 }
 
 func ensureRegexpUnanchoredHelper(parsed *syntax.Regexp, leftmost, rightmost bool) (output *syntax.Regexp, changed bool, err error) {
+	newRegexp := parsed
 	changed = false
 	switch parsed.Op {
 	case syntax.OpBeginLine, syntax.OpEndLine:
@@ -125,20 +123,20 @@ func ensureRegexpUnanchoredHelper(parsed *syntax.Regexp, leftmost, rightmost boo
 		return nil, false, fmt.Errorf("regular expressions are forced to be single line")
 	case syntax.OpBeginText:
 		if leftmost {
-			return &syntax.Regexp{
+			newRegexp = &syntax.Regexp{
 				Op:    syntax.OpEmptyMatch,
 				Flags: parsed.Flags,
-			}, true, nil
+			}
+			changed = true
 		}
-		return parsed, false, nil
 	case syntax.OpEndText:
 		if rightmost {
-			return &syntax.Regexp{
+			newRegexp = &syntax.Regexp{
 				Op:    syntax.OpEmptyMatch,
 				Flags: parsed.Flags,
-			}, true, nil
+			}
+			changed = true
 		}
-		return parsed, false, nil
 	case syntax.OpConcat:
 		// strip left-most '^'
 		if l := len(parsed.Sub); leftmost && l > 0 {
@@ -193,7 +191,7 @@ func ensureRegexpUnanchoredHelper(parsed *syntax.Regexp, leftmost, rightmost boo
 			if !c {
 				return parsed, false, nil
 			}
-			return &syntax.Regexp{
+			newRegexp = &syntax.Regexp{
 				Op:    syntax.OpConcat,
 				Flags: parsed.Flags,
 				Sub: []*syntax.Regexp{
@@ -206,7 +204,8 @@ func ensureRegexpUnanchoredHelper(parsed *syntax.Regexp, leftmost, rightmost boo
 					},
 					original,
 				},
-			}, true, nil
+			}
+			changed = true
 		}
 	case syntax.OpPlus:
 		if len(parsed.Sub) > 0 {
@@ -245,17 +244,18 @@ func ensureRegexpUnanchoredHelper(parsed *syntax.Regexp, leftmost, rightmost boo
 			}
 			original.Min--
 			original.Max--
-			return &syntax.Regexp{
+			newRegexp = &syntax.Regexp{
 				Op:    syntax.OpConcat,
 				Flags: parsed.Flags,
 				Sub: []*syntax.Regexp{
 					newRe,
 					original,
 				},
-			}, true, nil
+			}
+			changed = true
 		}
 	}
-	return parsed, changed, nil
+	return newRegexp, changed, nil
 }
 
 func deepCopy(ast *syntax.Regexp) *syntax.Regexp {
