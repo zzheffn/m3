@@ -440,7 +440,7 @@ func genPropTestInput(
 	ns string,
 ) gopter.Gen {
 	return gen.SliceOfN(numDatapoints, genWrite(start, bufferPast, bufferFuture, ns)).
-		Map(func(val interface{}) propTestInput {
+		Map(func(val []generatedWrite) propTestInput {
 			return propTestInput{
 				currentTime:     start,
 				bufferFuture:    bufferFuture,
@@ -448,7 +448,7 @@ func genPropTestInput(
 				snapshotTime:    snapshotTime,
 				snapshotExists:  snapshotExists,
 				commitLogExists: commitLogExists,
-				writes:          val.([]generatedWrite),
+				writes:          val,
 			}
 		})
 }
